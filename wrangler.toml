@@ -1,0 +1,19 @@
+name = "uunn"
+compatibility_date = "2024-01-01"
+
+# D1 Database for encrypted metadata only
+[[d1_databases]]
+binding = "DB"
+database_name = "uunn-db"
+database_id = "your-database-id" # Replace with actual ID after creating
+
+# Environment variables
+[vars]
+ENVIRONMENT = "production"
+
+# Development configuration
+[env.development]
+name = "uunn-dev"
+
+[env.development.vars]
+ENVIRONMENT = "development"
