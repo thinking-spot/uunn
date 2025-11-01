@@ -9,7 +9,7 @@ pages_build_output_dir = ".vercel/output/static"
 [[d1_databases]]
 binding = "DB"
 database_name = "uunn-production"
-database_id = "CREATE_THIS_FOR_PRODUCTION" # Run: wrangler d1 create uunn-production
+database_id = "f93cb9b3-833d-4c48-993a-49e7380c9091" # Run: wrangler d1 create uunn-production
 
 # Production environment variables
 [vars]
