@@ -5,27 +5,26 @@ compatibility_date = "2024-01-01"
 pages_build_output_dir = ".vercel/output/static"
 
 # Production D1 Database (encrypted metadata only)
-# This will be created during production setup
 [[d1_databases]]
 binding = "DB"
 database_name = "uunn-production"
-database_id = "f93cb9b3-833d-4c48-993a-49e7380c9091" # Run: wrangler d1 create uunn-production
+database_id = "f93cb9b3-833d-4c48-993a-49e7380c9091"
 
 # Production environment variables
 [vars]
 ENVIRONMENT = "production"
 NEXT_PUBLIC_API_URL = "https://www.uunn.io/api"
 
-# Development configuration
-[env.development]
-name = "uunn-dev"
+# Preview environment (for PR deployments and testing)
+[env.preview]
+name = "uunn-preview"
 
-# Development D1 Database (your existing database)
-[[env.development.d1_databases]]
+# Preview uses dev database for testing
+[[env.preview.d1_databases]]
 binding = "DB"
 database_name = "uunn-dev"
 database_id = "96d79317-8571-4514-b9e8-b004675e5c05"
 
-[env.development.vars]
-ENVIRONMENT = "development"
-NEXT_PUBLIC_API_URL = "http://localhost:3000/api"
+[env.preview.vars]
+ENVIRONMENT = "preview"
+NEXT_PUBLIC_API_URL = "https://preview.uunn.pages.dev/api"
