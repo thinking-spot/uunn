@@ -4,6 +4,21 @@
 
 uunn is a privacy-first web platform that enables workers to coordinate on workplace issues without requiring formal unionization. We provide secure communication, action templates, and document generation tools that respect workers' right to organize.
 
+## 🚀 Deploy to www.uunn.io
+
+Ready to launch? Choose your path:
+
+- **⚡ Quick Start** → [QUICKSTART.md](./QUICKSTART.md) - Launch in ~10 minutes
+- **📖 Complete Guide** → [DEPLOYMENT.md](./DEPLOYMENT.md) - Comprehensive deployment walkthrough
+- **🌐 DNS Setup** → [docs/DNS-SETUP.md](./docs/DNS-SETUP.md) - Configure your domain
+- **🔄 CI/CD Setup** → [docs/CI-CD-SETUP.md](./docs/CI-CD-SETUP.md) - Automated deployments
+
+**Automated Scripts:**
+```bash
+./scripts/setup-database.sh  # Initialize D1 database
+./scripts/deploy.sh          # Deploy to Cloudflare Pages
+```
+
 ---
 
 ## 🎯 The Gap We Fill
