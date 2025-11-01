@@ -1,39 +1,38 @@
 # Quick Start: Launch uunn on www.uunn.io
 
-**Time to launch: ~10 minutes**
+**Time to launch: ~5 minutes** (you already have Wrangler and a dev database!)
 
 ## Prerequisites
 
-- Cloudflare account
+- ✅ Cloudflare account (you have this!)
+- ✅ Wrangler installed and authenticated (you're logged in!)
+- ✅ Existing D1 database `uunn-dev` (will be used for local development)
 - Domain www.uunn.io added to Cloudflare
 
-## Step 1: Install & Login (2 min)
+## Your Existing Setup
 
-```bash
-# Install Wrangler globally
-npm install -g wrangler
-
-# Login to Cloudflare
-wrangler login
+```
+Account: jml1308@gmail.com
+Account ID: 96b8260d5d6c241b69dd7a42d3a30272
+Dev Database: uunn-dev (96d79317-8571-4514-b9e8-b004675e5c05)
 ```
 
-## Step 2: Set Up Database (3 min)
+## Step 1: Set Up Databases (2 min)
+
+This script will:
+- Initialize your existing `uunn-dev` database with tables
+- Create a new `uunn-production` database for www.uunn.io
+- Automatically update `wrangler.toml`
 
 ```bash
-# Run the automated setup script
+# Run from your local machine (not this environment)
+cd /Users/james/uunn
 ./scripts/setup-database.sh
 ```
 
-**IMPORTANT:** When prompted, copy the `database_id` and update `wrangler.toml`:
+No manual editing needed - the script handles everything!
 
-```toml
-[[d1_databases]]
-binding = "DB"
-database_name = "uunn-db"
-database_id = "paste-your-database-id-here"
-```
-
-## Step 3: Deploy to Cloudflare Pages (3 min)
+## Step 2: Deploy to Cloudflare Pages (2 min)
 
 ```bash
 # Deploy using the automated script
@@ -48,7 +47,7 @@ npm run pages:build
 wrangler pages deploy .vercel/output/static --project-name=uunn
 ```
 
-## Step 4: Add Custom Domain (2 min)
+## Step 3: Add Custom Domain (1 min)
 
 ```bash
 # Add www.uunn.io to your Pages project
