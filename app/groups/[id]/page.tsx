@@ -14,6 +14,9 @@ import { createInvitation, sendMessageMetadata } from "@/lib/api";
 import { formatDate, formatTime, copyToClipboard } from "@/lib/utils";
 import type { StoredGroup, StoredMessage, Message } from "@/types";
 
+// Configure for Edge Runtime (required for Cloudflare Pages)
+export const runtime = 'edge';
+
 export default function GroupPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
