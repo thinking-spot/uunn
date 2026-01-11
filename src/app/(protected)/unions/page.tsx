@@ -265,3 +265,54 @@ export default function UnionsPage() {
         </ProtectedRoute>
     );
 }
+
+function SecureInviteGenerator({ unionId }: { unionId: string }) {
+    const [link, setLink] = useState("");
+    const [loading, setLoading] = useState(false);
+
+    const generate = async () => {
+        setLoading(true);
+        try {
+            const url = await createSecureInvite(unionId);
+            setLink(url);
+        } catch (e) {
+            alert("Failed to create link: " + e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (link) {
+        return (
+            <div className="mt-2 text-xs">
+                <label className="block text-muted-foreground mb-1">Secure Link (Includes Keys)</label>
+                <div className="flex gap-2">
+                    <input
+                        readOnly
+                        value={link}
+                        className="flex-1 bg-background border rounded px-2 py-1 text-xs truncate"
+                    />
+                    <button
+                        onClick={() => {
+                            navigator.clipboard.writeText(link);
+                            alert("Link copied!");
+                        }}
+                        className="bg-primary text-primary-foreground px-2 py-1 rounded hover:bg-primary/90"
+                    >
+                        Copy
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <button
+            onClick={generate}
+            disabled={loading}
+            className="w-full mt-2 text-xs bg-secondary hover:bg-secondary/80 text-secondary-foreground py-2 rounded flex items-center justify-center gap-2"
+        >
+            {loading ? "Generating..." : <><ShieldCheck className="h-3 w-3" /> Create Secure Invite Link</>}
+        </button>
+    );
+}
