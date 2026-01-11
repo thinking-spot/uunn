@@ -12,6 +12,7 @@ export type VoteData = {
     created_at: string;
     created_by: string;
     my_vote?: string; // What the current user voted
+    attached_documents?: { id: string, title: string }[];
     results: {
         yes: number;
         no: number;
@@ -20,37 +21,62 @@ export type VoteData = {
     };
 };
 
-export async function createVoteAction(unionId: string, title: string, description: string) {
+export async function createVoteAction(unionId: string, title: string, description: string, documentIds: string[] = []) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
-    const { data, error } = await supabase
+    // 1. Create Vote
+    const { data: vote, error } = await supabase
         .from('Votes')
         .insert({
             union_id: unionId,
             created_by: session.user.id,
             title,
             description,
-            vote_type: 'yes_no' // MVP restricted to yes_no
+            vote_type: 'yes_no'
         })
         .select()
         .single();
 
     if (error) {
         console.error("Create Vote Error:", error);
-        return { error: "Failed to create vote" };
+        // Clean error message
+        return { error: `Failed to create vote: ${error.message}` };
     }
-    return { success: true, vote: data };
+
+    // 2. Attach Documents
+    if (documentIds.length > 0) {
+        const attachments = documentIds.map(docId => ({
+            vote_id: vote.id,
+            document_id: docId
+        }));
+
+        const { error: attachError } = await supabase
+            .from('VoteAttachments')
+            .insert(attachments);
+
+        if (attachError) {
+            console.error("Attachment Error:", attachError);
+            // Non-fatal, return success with warning? Or just log.
+        }
+    }
+
+    return { success: true, vote };
 }
 
 export async function getUnionVotesAction(unionId: string): Promise<{ votes?: VoteData[], error?: string }> {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
-    // 1. Fetch Votes
+    // 1. Fetch Votes with Attachments
     const { data: votes, error } = await supabase
         .from('Votes')
-        .select('*')
+        .select(`
+            *,
+            attachments:VoteAttachments (
+                document:Documents (id, title)
+            )
+        `)
         .eq('union_id', unionId)
         .order('created_at', { ascending: false });
 
@@ -97,7 +123,9 @@ export async function getUnionVotesAction(unionId: string): Promise<{ votes?: Vo
     const finalVotes: VoteData[] = votes.map(v => ({
         ...v,
         my_vote: myVoteMap.get(v.id),
-        results: resultsMap.get(v.id) || { yes: 0, no: 0, abstain: 0, total: 0 }
+        results: resultsMap.get(v.id) || { yes: 0, no: 0, abstain: 0, total: 0 },
+        // @ts-ignore - Supabase type inference is tricky with nested joins
+        attached_documents: v.attachments?.map((a: any) => a.document) || []
     }));
 
     return { votes: finalVotes };

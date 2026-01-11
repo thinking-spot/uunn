@@ -1,113 +1,103 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { Plus, FileText, Trash2, Loader2, FilePlus } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/context/AuthContext";
-import { getUserDocuments, DocumentData } from "@/services/documentService";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
-import ProtectedRoute from "@/components/ProtectedRoute";
-
-const TEMPLATES = [
-    { id: "petition", name: "Petition for Change", description: "Collect signatures for a specific workplace demand." },
-    { id: "grievance", name: "Formal Grievance", description: "Official complaint regarding contract violation." },
-    { id: "contract", name: "Contract Proposal", description: "Draft language for upcoming bargaining sessions." },
-    { id: "email", name: "Management Email", description: "Professional communication to supervisors." },
-    { id: "alliance", name: "Inter-Union Alliance", description: "Propose an alliance or joint action." },
-    { id: "safety", name: "Safety Incident Report", description: "Formal documentation of workplace hazards." },
-];
+import { useState, useEffect } from "react";
+import { useUnion } from "@/context/UnionContext";
+import { createDocumentAction, getUnionDocumentsAction, Document } from "@/lib/document-actions";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Plus, FileText, ArrowRight } from "lucide-react";
+import Link from "next/link";
 
 export default function DocumentsPage() {
-    const { user } = useAuth();
-    const router = useRouter();
-    const [documents, setDocuments] = useState<DocumentData[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { activeUnion } = useUnion();
+    const [documents, setDocuments] = useState<Document[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [isCreating, setIsCreating] = useState(false);
+    const [newTitle, setNewTitle] = useState("");
 
     useEffect(() => {
-        if (user) {
-            getUserDocuments(user.uid).then(docs => {
-                setDocuments(docs);
-                setLoading(false);
-            });
+        if (activeUnion) {
+            loadDocs();
         }
-    }, [user]);
+    }, [activeUnion]);
 
-    const handleCreate = (templateId: string) => {
-        router.push(`/documents/create?template=${templateId}`);
+    const loadDocs = async () => {
+        if (!activeUnion) return;
+        setLoading(true);
+        const { documents: data, error } = await getUnionDocumentsAction(activeUnion.id);
+        if (data) setDocuments(data);
+        if (error) console.error(error);
+        setLoading(false);
     };
 
+    const handleCreate = async () => {
+        if (!activeUnion || !newTitle) return;
+        try {
+            const { error } = await createDocumentAction(activeUnion.id, newTitle);
+            if (error) alert(error);
+            else {
+                setIsCreating(false);
+                setNewTitle("");
+                loadDocs();
+            }
+        } catch (e) {
+            alert("Error creating document");
+        }
+    };
+
+    if (!activeUnion) {
+        return <div className="p-8 text-center text-muted-foreground">Select a union to view documents.</div>;
+    }
+
     return (
-        <ProtectedRoute>
-            <div className="p-8 max-w-6xl mx-auto">
-                <div className="flex items-center justify-between mb-8">
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight">Documents</h1>
-                        <p className="text-muted-foreground">Create and manage union documents.</p>
-                    </div>
+        <div className="p-4 md:p-8 max-w-4xl mx-auto">
+            <div className="flex items-center justify-between mb-8">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Documents</h1>
+                    <p className="text-muted-foreground">Collaborative notes, demand letters, and minutes.</p>
                 </div>
-
-                <Tabs defaultValue="my-docs" className="w-full">
-                    <TabsList className="mb-8">
-                        <TabsTrigger value="my-docs">My Documents</TabsTrigger>
-                        <TabsTrigger value="templates">New Document</TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="my-docs">
-                        {loading ? (
-                            <div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>
-                        ) : documents.length === 0 ? (
-                            <div className="rounded-lg border border-dashed p-12 text-center">
-                                <p className="text-muted-foreground mb-4">You haven't created any documents yet.</p>
-                                <button
-                                    onClick={() => (document.querySelector('[data-value="templates"]') as HTMLElement)?.click()}
-                                    className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                                >
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Create New Document
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                                {documents.map(doc => (
-                                    <div key={doc.id} className="rounded-xl border bg-card p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => router.push(`/documents/${doc.id}`)}>
-                                        <div className="flex items-start justify-between">
-                                            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                                                <FileText className="h-5 w-5" />
-                                            </div>
-                                            <span className={`text-xs font-medium px-2 py-1 rounded-full ${doc.status === 'final' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                                {doc.status.toUpperCase()}
-                                            </span>
-                                        </div>
-                                        <h3 className="mt-4 font-semibold text-lg truncate">{doc.title}</h3>
-                                        <p className="text-sm text-muted-foreground">{doc.templateType}</p>
-                                        <div className="mt-4 text-xs text-muted-foreground">
-                                            Last updated: {doc.updatedAt?.seconds ? new Date(doc.updatedAt.seconds * 1000).toLocaleDateString() : 'Just now'}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </TabsContent>
-
-                    <TabsContent value="templates">
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                            {TEMPLATES.map(template => (
-                                <div
-                                    key={template.id}
-                                    className="group relative rounded-xl border bg-card p-6 shadow-sm hover:border-primary hover:shadow-md transition-all cursor-pointer"
-                                    onClick={() => handleCreate(template.id)}
-                                >
-                                    <div className="h-12 w-12 rounded-lg bg-muted group-hover:bg-primary/10 flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors mb-4">
-                                        <FilePlus className="h-6 w-6" />
-                                    </div>
-                                    <h3 className="font-semibold text-lg">{template.name}</h3>
-                                    <p className="mt-2 text-sm text-muted-foreground">{template.description}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </TabsContent>
-                </Tabs>
+                <Button onClick={() => setIsCreating(!isCreating)}>
+                    <Plus className="mr-2 h-4 w-4" /> New Document
+                </Button>
             </div>
-        </ProtectedRoute>
+
+            {isCreating && (
+                <Card className="mb-8 border-primary/20">
+                    <CardHeader>
+                        <CardTitle>Create New Document</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <input
+                            placeholder="Document Title (e.g. Safety Demands)"
+                            className="w-full p-2 border rounded"
+                            value={newTitle} onChange={e => setNewTitle(e.target.value)}
+                        />
+                    </CardContent>
+                    <CardFooter className="justify-end gap-2">
+                        <Button variant="ghost" onClick={() => setIsCreating(false)}>Cancel</Button>
+                        <Button onClick={handleCreate}>Create</Button>
+                    </CardFooter>
+                </Card>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {documents.map(doc => (
+                    <Link key={doc.id} href={`/documents/${doc.id}`}>
+                        <Card className="hover:bg-accent hover:border-primary/50 transition-colors cursor-pointer h-full">
+                            <CardHeader>
+                                <FileText className="h-8 w-8 text-primary mb-2" />
+                                <CardTitle className="text-lg">{doc.title}</CardTitle>
+                                <CardDescription>Last updated: {new Date(doc.updated_at).toLocaleDateString()}</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-sm text-muted-foreground line-clamp-3">
+                                    {doc.content || "Empty document"}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </Link>
+                ))}
+            </div>
+        </div>
     );
 }
