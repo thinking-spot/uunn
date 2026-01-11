@@ -17,7 +17,7 @@ export default function PrivacyPage() {
                 </section>
 
                 <section>
-                    <h2 className="text-xl font-bold mb-4">What We DON'T Collect</h2>
+                    <h2 className="text-xl font-bold mb-4">What We DON&apos;T Collect</h2>
                     <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
                         <li><strong>Your Messages:</strong> Content is end-to-end encrypted. We cannot read it.</li>
                         <li><strong>Real Identity:</strong> We don't require legal names.</li>

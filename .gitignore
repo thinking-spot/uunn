@@ -36,4 +36,7 @@ next-env.d.ts
 
 # cloudflare
 .dev.vars
+
+# Backups
 _backup/
+old2-techloop-old/
