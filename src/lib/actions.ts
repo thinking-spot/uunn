@@ -39,7 +39,7 @@ export async function register(
     const parsed = CredentialsSchema.safeParse(data);
 
     if (!parsed.success) {
-        return 'Invalid input: ' + parsed.error.errors.map(e => e.message).join(', ');
+        return 'Invalid input: ' + parsed.error.issues.map(e => e.message).join(', ');
     }
 
     const { username, password } = parsed.data;
