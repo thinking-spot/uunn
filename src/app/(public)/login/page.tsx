@@ -2,13 +2,13 @@
 
 import { useActionState } from 'react'; // React 19 hook (formerly useFormState)
 import { useFormStatus } from 'react-dom';
-import { authenticate, register } from '@/lib/actions';
+import { authenticate, register, getVaultAction } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { useState } from 'react';
 import Link from 'next/link';
 
-import { generateUserKeyPair, exportKey, encryptVault } from '@/lib/crypto';
+import { generateUserKeyPair, exportKey, encryptVault, decryptVault } from '@/lib/crypto';
 import { useEffect } from 'react';
 
 export default function LoginPage() {
@@ -42,6 +42,7 @@ export default function LoginPage() {
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
+        const username = formData.get('username') as string;
 
         // Optimistically save private key to local storage
         if (isRegistering && privateKeyJwk) {
@@ -54,8 +55,38 @@ export default function LoginPage() {
                 formData.append('vaultSalt', salt);
             } catch (err) {
                 console.error("Failed to encrypt vault:", err);
-                // Continue anyway? Or block? 
-                // Let's continue but warn? Ideally block.
+            }
+        } else if (!isRegistering) {
+            // Login: Attempt to restore keys from Vault
+            try {
+                const vaultData = await getVaultAction(username);
+
+                if (vaultData && !vaultData.error && vaultData.encryptedVault && vaultData.vaultSalt) {
+                    try {
+                        console.log("Found backup vault, attempting decryption...");
+                        const decryptedKey = await decryptVault(vaultData.encryptedVault, password, vaultData.vaultSalt);
+                        localStorage.setItem('uunn_private_key', JSON.stringify(decryptedKey));
+
+                        if (vaultData.publicKey) {
+                            localStorage.setItem('uunn_public_key', vaultData.publicKey);
+                        }
+                        console.log("Key restoration successful!");
+                    } catch (decryptionError) {
+                        console.error("Decryption failed:", decryptionError);
+                        // If decryption fails, it implies Wrong Password (or corrupted data).
+                        // Note: authenticate() server action will also check password hash.
+                        // Ideally we stop here, but let's let server decide auth status.
+                        // BUT: If they log in with bad keys, they can't read messages.
+                        // Let's block if we are sure it's a decryption error.
+                        // Actually, PBKDF2 protects this. If decrypt fails, password IS wrong.
+                        alert("Invalid password (decryption failed).");
+                        return; // Block login
+                    }
+                } else {
+                    console.log("No backup vault found for user. Legacy account?");
+                }
+            } catch (err) {
+                console.error("Error fetching vault:", err);
             }
         }
 

@@ -91,3 +91,19 @@ export async function register(
         throw error;
     }
 }
+
+export async function getVaultAction(username: string) {
+    const { data, error } = await supabase
+        .from('Users')
+        .select('encrypted_vault, vault_salt, public_key')
+        .eq('username', username)
+        .single();
+
+    if (error || !data) return { error: 'User not found' };
+
+    return {
+        encryptedVault: data.encrypted_vault,
+        vaultSalt: data.vault_salt,
+        publicKey: data.public_key
+    };
+}
