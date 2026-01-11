@@ -49,25 +49,17 @@ export function UserDropdown() {
                 <div className="flex flex-col items-end mr-2 hidden md:flex">
                     <span className="text-sm font-medium leading-none">{user.displayName || "User"}</span>
                 </div>
-                {user.photoURL ? (
-                    <img src={user.photoURL} alt={user.displayName || "User"} className="h-8 w-8 rounded-full ring-2 ring-background" />
-                ) : (
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 text-primary font-bold">
-                        {userInitials}
-                    </div>
-                )}
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 text-primary font-bold">
+                    {userInitials}
+                </div>
             </button>
 
             {isOpen && (
                 <div className="absolute right-0 top-full mt-2 w-64 rounded-lg border bg-card p-2 shadow-lg animate-in fade-in zoom-in-95 duration-200 z-50">
                     <div className="flex items-center gap-3 p-2 border-b mb-2">
-                        {user.photoURL ? (
-                            <img src={user.photoURL} alt={user.displayName || "User"} className="h-10 w-10 rounded-full" />
-                        ) : (
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-primary font-bold text-lg">
-                                {userInitials}
-                            </div>
-                        )}
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-primary font-bold text-lg">
+                            {userInitials}
+                        </div>
                         <div className="flex flex-col overflow-hidden">
                             <span className="font-semibold truncate">{user.displayName || "User"}</span>
                             <span className="text-xs text-muted-foreground truncate">{user.email}</span>
