@@ -82,42 +82,65 @@ export async function getUserUnionsAction() {
     }));
 }
 
-export async function joinUnionAction(inviteCode: string) {
+export async function joinUnionAction(inviteCodeOrId: string, encryptedSharedKey?: string) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
-    // 1. Find Union
-    const { data: union, error: unionError } = await supabase
+    // 1. Try finding by Invite Code (Legacy)
+    let unionId = null;
+    let isLegacy = false;
+
+    // A. Check Unions (Legacy Invite Code)
+    const { data: legacyUnion } = await supabase
         .from('Unions')
         .select('id')
-        .eq('invite_code', inviteCode)
+        .eq('invite_code', inviteCodeOrId)
         .single();
 
-    if (unionError || !union) return { error: "Invalid invite code" };
+    if (legacyUnion) {
+        unionId = legacyUnion.id;
+        isLegacy = true;
+    } else {
+        // B. Check UnionInvites (New Secure Invite)
+        // Actually, for secure invite, we pass the UnionId directly usuall?
+        // Let's assume the frontend flow extracts UnionId from getInviteAction first.
+        // But if `inviteCodeOrId` IS the Invite ID from the URL...
+        const { data: invite } = await supabase
+            .from('UnionInvites')
+            .select('union_id')
+            .eq('id', inviteCodeOrId)
+            .single();
+
+        if (invite) {
+            unionId = invite.union_id;
+        }
+    }
+
+    if (!unionId) return { error: "Invalid invite code or link" };
 
     // 2. Check if member
     const { data: member } = await supabase
         .from('Memberships')
         .select('user_id')
-        .eq('union_id', union.id)
+        .eq('union_id', unionId)
         .eq('user_id', session.user.id)
         .single();
 
-    if (member) return { success: true, unionId: union.id, alreadyMember: true };
+    if (member) return { success: true, unionId: unionId, alreadyMember: true };
 
     // 3. Join
     const { error: joinError } = await supabase
         .from('Memberships')
         .insert({
-            union_id: union.id,
+            union_id: unionId,
             user_id: session.user.id,
             role: 'member',
-            encrypted_shared_key: null // No key yet
+            encrypted_shared_key: encryptedSharedKey || null // Use key if provided!
         });
 
     if (joinError) return { error: "Failed to join union" };
 
-    return { success: true, unionId: union.id };
+    return { success: true, unionId: unionId };
 }
 
 export async function getMyPublicKeyAction() {
@@ -132,3 +155,50 @@ export async function getMyPublicKeyAction() {
 
     return { publicKey: user?.public_key };
 }
+
+// INVITE ACTIONS
+export async function createInviteAction(unionId: string, encryptedUnionKey: string, invitePublicKey: string, createdBy: string) {
+    const { data: invite, error } = await supabase
+        .from('UnionInvites')
+        .insert({
+            union_id: unionId,
+            created_by: createdBy,
+            encrypted_union_key: encryptedUnionKey,
+            invite_public_key: invitePublicKey
+        })
+        .select('id')
+        .single();
+
+    if (error) {
+        console.error("Invite Creation Error:", error);
+        return { error: 'Failed to create invite' };
+    }
+    return { success: true, inviteId: invite.id };
+}
+
+export async function getInviteAction(inviteId: string) {
+    const { data: invite, error } = await supabase
+        .from('UnionInvites')
+        .select(`
+            id,
+            encrypted_union_key,
+            invite_public_key,
+            union:Unions (
+                id,
+                name
+            )
+        `)
+        .eq('id', inviteId)
+        .single();
+
+    if (error || !invite) return { error: 'Invite not found or expired' };
+
+    return {
+        id: invite.id,
+        unionName: invite.union.name,
+        unionId: invite.union.id,
+        encryptedUnionKey: invite.encrypted_union_key,
+        invitePublicKey: invite.invite_public_key
+    };
+}
+

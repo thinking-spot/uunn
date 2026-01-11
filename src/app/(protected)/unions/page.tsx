@@ -10,6 +10,7 @@ import {
     requestAlliance,
     getAlliedUnions,
     getUnion,
+    createSecureInvite,
     Union
 } from "@/services/unionService";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
@@ -131,15 +132,17 @@ export default function UnionsPage() {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="p-3 bg-muted/50 rounded-lg flex items-center justify-between">
+                                    <div className="p-3 bg-muted/50 rounded-lg flex items-center justify-between mb-2">
                                         <code className="text-sm font-mono">{union.inviteCode}</code>
                                         <button
                                             onClick={() => navigator.clipboard.writeText(union.inviteCode)}
                                             className="text-muted-foreground hover:text-primary"
+                                            title="Copy Legacy Code"
                                         >
                                             <Copy className="h-4 w-4" />
                                         </button>
                                     </div>
+                                    <SecureInviteGenerator unionId={union.id} />
                                 </div>
                             ))}
                         </div>
