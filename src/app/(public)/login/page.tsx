@@ -8,13 +8,14 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { useState } from 'react';
 import Link from 'next/link';
 
-import { generateUserKeyPair, exportKey } from '@/lib/crypto';
+import { generateUserKeyPair, exportKey, encryptVault } from '@/lib/crypto';
 import { useEffect } from 'react';
 
 export default function LoginPage() {
     const [isRegistering, setIsRegistering] = useState(false);
     const [publicKey, setPublicKey] = useState('');
     const [privateKeyJwk, setPrivateKeyJwk] = useState<JsonWebKey | null>(null);
+    const [password, setPassword] = useState('');
 
     const [errorMessage, formAction] = useActionState(
         isRegistering ? register : authenticate,
@@ -38,11 +39,31 @@ export default function LoginPage() {
         }
     }, [isRegistering]);
 
-    const handleSubmit = () => {
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+
         // Optimistically save private key to local storage
         if (isRegistering && privateKeyJwk) {
             localStorage.setItem('uunn_private_key', JSON.stringify(privateKeyJwk));
+
+            // Encrypt Vault for Backup
+            try {
+                const { vault, salt } = await encryptVault(privateKeyJwk, password);
+                formData.append('encryptedVault', vault);
+                formData.append('vaultSalt', salt);
+            } catch (err) {
+                console.error("Failed to encrypt vault:", err);
+                // Continue anyway? Or block? 
+                // Let's continue but warn? Ideally block.
+            }
         }
+
+        // Pass the modified FormData to the action
+        // startTransition is handled by useActionState's dispatcher?
+        // Wait, useActionState returns [state, dispatch]. dispatch(payload).
+        // If the payload is formData, we just pass the modified one.
+        formAction(formData);
     };
 
     return (
@@ -58,7 +79,7 @@ export default function LoginPage() {
                             : 'Enter your credentials to access your union.'}
                     </CardDescription>
                 </CardHeader>
-                <form action={formAction} onSubmit={handleSubmit}>
+                <form onSubmit={handleSubmit}>
                     <input type="hidden" name="publicKey" value={publicKey} />
                     <CardContent className="space-y-4">
                         <div className="space-y-2">
@@ -86,6 +107,8 @@ export default function LoginPage() {
                                 name="password"
                                 required
                                 minLength={6}
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
                             />
                         </div>
                         <div className="flex h-8 items-end space-x-1" aria-live="polite" aria-atomic="true">

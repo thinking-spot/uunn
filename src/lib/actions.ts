@@ -63,7 +63,10 @@ export async function register(
         const { error } = await supabase.from('Users').insert({
             username,
             password_hash: hashedPassword,
-            public_key: publicKey // Save public key!
+            password_hash: hashedPassword,
+            public_key: publicKey,
+            encrypted_vault: formData.get('encryptedVault') as string,
+            vault_salt: formData.get('vaultSalt') as string
         });
 
         if (error) throw error;

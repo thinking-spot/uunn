@@ -175,3 +175,95 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
     }
     return bytes.buffer;
 }
+
+// 8. Key Vault (Backup & Recovery)
+// Encrypts the Private Key using the User's Password.
+
+// Derive a strong encryption key from the user's password using PBKDF2
+async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promise<CryptoKey> {
+    const encoder = new TextEncoder();
+    const keyMaterial = await window.crypto.subtle.importKey(
+        "raw",
+        encoder.encode(password),
+        "PBKDF2",
+        false,
+        ["deriveKey"]
+    );
+
+    return window.crypto.subtle.deriveKey(
+        {
+            name: "PBKDF2",
+            salt: salt,
+            iterations: 100000,
+            hash: "SHA-256",
+        },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        true,
+        ["encrypt", "decrypt"]
+    );
+}
+
+export async function encryptVault(privateKeyJwk: JsonWebKey, password: string): Promise<{ vault: string; salt: string }> {
+    // 1. Generate random salt
+    const salt = window.crypto.getRandomValues(new Uint8Array(16));
+
+    // 2. Derive Key
+    const wrappingKey = await deriveKeyFromPassword(password, salt);
+
+    // 3. Encrypt the JWK string
+    const jwkString = JSON.stringify(privateKeyJwk);
+    const encoder = new TextEncoder();
+    const data = encoder.encode(jwkString);
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+    const encryptedContent = await window.crypto.subtle.encrypt(
+        {
+            name: "AES-GCM",
+            iv: iv,
+        },
+        wrappingKey,
+        data
+    );
+
+    // 4. Pack Salt + IV + Ciphertext
+    // Format: salt(16) + iv(12) + ciphertext
+    // Actually, easier to return Salt separate, and pack IV with content.
+    // Let's pack IV with Ciphertext like typically done: IV + Cipher => Base64
+
+    const combinedBuffer = new Uint8Array(iv.byteLength + encryptedContent.byteLength);
+    combinedBuffer.set(iv, 0);
+    combinedBuffer.set(new Uint8Array(encryptedContent), iv.byteLength);
+
+    return {
+        vault: arrayBufferToBase64(combinedBuffer.buffer),
+        salt: arrayBufferToBase64(salt.buffer as ArrayBuffer)
+    };
+}
+
+export async function decryptVault(vaultBase64: string, password: string, saltBase64: string): Promise<JsonWebKey> {
+    const salt = new Uint8Array(base64ToArrayBuffer(saltBase64));
+    const combined = new Uint8Array(base64ToArrayBuffer(vaultBase64));
+
+    // Extract IV (12 bytes)
+    const iv = combined.slice(0, 12);
+    const data = combined.slice(12);
+
+    const unwrappingKey = await deriveKeyFromPassword(password, salt);
+
+    try {
+        const decryptedBuffer = await window.crypto.subtle.decrypt(
+            {
+                name: "AES-GCM",
+                iv: iv,
+            },
+            unwrappingKey,
+            data
+        );
+
+        const decoder = new TextDecoder();
+        return JSON.parse(decoder.decode(decryptedBuffer));
+    } catch (e) {
+        throw new Error("Invalid password or corrupted vault");
+    }
+}
