@@ -7,6 +7,7 @@ import {
     LayoutDashboard,
     AlertCircle,
     MessageSquare,
+    Vote,
     FileText,
     Users,
     Building2,
@@ -16,7 +17,7 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Votes & Actions", href: "/votes-actions", icon: AlertCircle },
+    { name: "Votes", href: "/votes", icon: Vote },
     { name: "Messages", href: "/messages", icon: MessageSquare },
     { name: "Documents", href: "/documents", icon: FileText },
     { name: "Members", href: "/members", icon: Users },
