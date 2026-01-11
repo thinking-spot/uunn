@@ -65,13 +65,9 @@ export default function SettingsPage() {
                                 <div className="p-6 pt-0">
                                     <div className="flex items-center gap-6 mb-8">
                                         <div className="relative">
-                                            {user.photoURL ? (
-                                                <img src={user.photoURL} alt={user.displayName || "User"} className="h-24 w-24 rounded-full object-cover" />
-                                            ) : (
-                                                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-secondary text-secondary-foreground text-3xl font-bold">
-                                                    {userInitials}
-                                                </div>
-                                            )}
+                                            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-secondary text-secondary-foreground text-3xl font-bold">
+                                                {userInitials}
+                                            </div>
                                             <button className="absolute bottom-0 right-0 rounded-full bg-primary p-2 text-primary-foreground shadow-sm hover:bg-primary/90">
                                                 <Camera className="h-4 w-4" />
                                             </button>
