@@ -13,7 +13,7 @@ export interface Union {
 import { createUnionAction, joinUnionAction, getUserUnionsAction, getMyPublicKeyAction } from "@/lib/union-actions";
 import { generateUnionKey, exportKey, wrapKey, importPublicKey, importPrivateKey, unwrapKey } from "@/lib/crypto";
 
-export type { Union };
+
 
 // Helper to get my private key from storage
 function getMyPrivateKey(): Promise<CryptoKey> {
