@@ -90,8 +90,9 @@ function WizardContent() {
             if (docId) {
                 await updateDocumentAction(docId, content);
             } else {
-                const newId = await createDocument(user.uid, selectedUnionId, templateId || "generic", title, metadata);
-                router.replace(`/documents/create?id=${newId}`);
+                const result = await createDocumentAction(selectedUnionId, title, content);
+                if (result.error || !result.document) throw new Error(result.error);
+                router.replace(`/documents/create?id=${result.document.id}`);
             }
             alert("Document saved!");
             router.push("/documents");
