@@ -6,20 +6,24 @@ import { auth } from '@/auth';
 export async function sendMessageAction(
     unionId: string,
     contentBlob: string,
-    iv: string
+    iv: string,
+    id?: string // Optional client-generated ID
 ) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
     try {
+        const payload: any = {
+            union_id: unionId,
+            sender_id: session.user.id,
+            content_blob: contentBlob,
+            iv: iv
+        };
+        if (id) payload.id = id;
+
         const { error } = await supabaseAdmin
             .from('Messages')
-            .insert({
-                union_id: unionId,
-                sender_id: session.user.id,
-                content_blob: contentBlob,
-                iv: iv
-            });
+            .insert(payload);
 
         if (error) throw error;
         return { success: true };

@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { Search, MoreVertical, Paperclip, Send, ShieldCheck, Lock, Loader2, MessageSquare } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { getUserUnions, Union } from "@/services/unionService";
-import { subscribeToMessages, sendMessage, MessageData } from "@/services/messageService";
+import { useMessages, MessageData } from "@/hooks/useMessages";
 import { importPrivateKey, unwrapKey, encryptContent, decryptContent } from "@/lib/crypto";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { cn } from "@/lib/utils";
@@ -17,11 +17,15 @@ export default function MessagesPage() {
     const { user } = useAuth();
     const [unions, setUnions] = useState<Union[]>([]);
     const [activeUnion, setActiveUnion] = useState<Union | null>(null);
-    const [messages, setMessages] = useState<DecryptedMessage[]>([]);
     const [textInput, setTextInput] = useState("");
-    const [loading, setLoading] = useState(true);
     const [key, setKey] = useState<CryptoKey | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Custom Hook handles fetching, realtime, and optimistic sending
+    const { messages: rawMessages, loading, sendMessage } = useMessages(activeUnion?.id || null);
+
+    // Derived State: Decrypted Messages
+    const [messages, setMessages] = useState<DecryptedMessage[]>([]);
 
     // 1. Load User's Unions
     useEffect(() => {
@@ -30,8 +34,6 @@ export default function MessagesPage() {
                 setUnions(data);
                 if (data.length > 0) {
                     setActiveUnion(data[0]);
-                } else {
-                    setLoading(false);
                 }
             });
         }
@@ -42,12 +44,9 @@ export default function MessagesPage() {
         if (activeUnion && activeUnion.encryptionKey) {
             const decryptKey = async () => {
                 try {
-                    // 1. Get My Private Key
                     const privKeyStr = localStorage.getItem('uunn_private_key');
                     if (!privKeyStr) throw new Error("Private key not found");
                     const privKey = await importPrivateKey(JSON.parse(privKeyStr));
-
-                    // 2. Unwrap the Shared Key (it is stored as Base64 in encryptionKey)
                     const sharedKey = await unwrapKey(activeUnion.encryptionKey, privKey);
                     setKey(sharedKey);
                 } catch (err) {
@@ -58,49 +57,48 @@ export default function MessagesPage() {
         }
     }, [activeUnion]);
 
-    // 3. Subscribe to messages
+    // 3. Decrypt Messages when they change OR key changes
     useEffect(() => {
-        if (!activeUnion) return;
-
-        setLoading(true);
-        const unsubscribe = subscribeToMessages(activeUnion.id, "general", async (msgs) => {
-            if (key) {
-                // Decrypt all messages
-                const decrypted = await Promise.all(msgs.map(async (m) => {
-                    try {
-                        const text = await decryptContent(m.ciphertext, m.iv, key);
-                        return { ...m, text };
-                    } catch (e) {
-                        return { ...m, text: "Wait... (decrypting)" }; // Or "Error decrypting"
-                    }
-                }));
-                setMessages(decrypted);
+        if (!key || rawMessages.length === 0) {
+            if (rawMessages.length > 0 && !key) {
+                setMessages(rawMessages.map(m => ({ ...m, text: "🔒 Encrypted..." })));
             } else {
-                // Show encrypted placeholder until key loads
-                const placeholders = msgs.map(m => ({ ...m, text: "🔒 Encrypted Message" }));
-                setMessages(placeholders);
+                setMessages([]);
             }
-            setLoading(false);
-        });
+            return;
+        }
 
-        return () => unsubscribe();
-    }, [activeUnion, key]); // Re-run when key is loaded to decrypt existing messages!
+        const decryptAll = async () => {
+            const decrypted = await Promise.all(rawMessages.map(async (m) => {
+                // If we already decrypted it? (Optimization for later)
+                try {
+                    const text = await decryptContent(m.ciphertext, m.iv, key);
+                    return { ...m, text };
+                } catch (e) {
+                    return { ...m, text: "Error decrypting" };
+                }
+            }));
+            setMessages(decrypted);
+        };
+        decryptAll();
+    }, [rawMessages, key]);
 
     // Scroll to bottom on new messages
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+    }, [messages.length]); // depend on length to scroll on new arrival
 
     const handleSend = async () => {
         if (!textInput.trim() || !user || !activeUnion || !key) return;
 
         try {
             const { cipherText, iv } = await encryptContent(textInput, key);
-            await sendMessage(activeUnion.id, "general", cipherText, iv, user.uid, user.displayName || "Unknown");
+            // Optimistic Send via Hook
+            await sendMessage(cipherText, iv, user.uid, user.displayName || "Unknown");
             setTextInput("");
         } catch (error) {
             console.error("Error sending message", error);
-            alert(error instanceof Error ? error.message : "Failed to send message");
+            alert("Failed to send message");
         }
     };
 
