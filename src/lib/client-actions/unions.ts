@@ -7,6 +7,9 @@ export interface Union {
     inviteCode: string;
     encryptionKey: string;
     role: string;
+    location?: string;
+    description?: string;
+    isPublic?: boolean;
     members: string[]; // Or User[] objects
 }
 
