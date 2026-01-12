@@ -5,8 +5,9 @@ import { useUnion } from "@/context/UnionContext";
 import { getDashboardStatsAction } from "@/lib/union-actions";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Vote, FileText, Users, MessageSquare, ArrowRight, Loader2 } from "lucide-react";
+import { Vote, FileText, Users, MessageSquare, ArrowRight, Loader2, Bell } from "lucide-react";
 import Link from "next/link";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 type DashboardStats = {
   activeVotes: number;
@@ -138,6 +139,38 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      function NotificationCard() {
+    const {isSubscribed, subscribe, loading, error} = usePushNotifications();
+
+      if (isSubscribed) return null; // Hide if already subscribed (cleaner dashboard)
+
+      return (
+      <Card className="col-span-1 border-primary/20 bg-primary/5">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-primary flex items-center gap-2">
+            <Bell className="h-4 w-4" />
+            Notifications
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-2xl font-bold">Enable Push</p>
+          <p className="text-xs text-muted-foreground mt-1">Get notified of new messages instantly.</p>
+        </CardContent>
+        <CardFooter>
+          <Button
+            size="sm"
+            onClick={subscribe}
+            disabled={loading}
+            variant="outline"
+            className="w-full"
+          >
+            {loading ? "Enabling..." : "Turn On"}
+          </Button>
+          {error && <p className="text-xs text-destructive mt-2">{error}</p>}
+        </CardFooter>
+      </Card>
+      );
+}
       {/* Recent Documents List */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
