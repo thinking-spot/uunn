@@ -11,6 +11,8 @@ import {
     getAlliedUnions,
     getUnion,
     createSecureInvite,
+    searchUnionsAction,
+    requestJoinUnionAction,
     Union
 } from "@/lib/client-actions/unions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
@@ -91,6 +93,34 @@ export default function UnionsPage() {
             alert("Alliance request sent!");
         } catch (error) {
             alert("Error requesting alliance: " + error);
+        }
+    };
+
+    // Discovery State
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchLocation, setSearchLocation] = useState("");
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [searching, setSearching] = useState(false);
+
+    const handleSearch = async () => {
+        setSearching(true);
+        try {
+            const { unions, error } = await searchUnionsAction(searchQuery, searchLocation);
+            if (unions) setSearchResults(unions);
+            else if (error) alert("Search failed");
+        } finally {
+            setSearching(false);
+        }
+    };
+
+    const handleRequestJoin = async (unionId: string) => {
+        if (!confirm("Request to join this union?")) return;
+        try {
+            const { error } = await requestJoinUnionAction(unionId);
+            if (error) alert(error);
+            else alert("Request sent!");
+        } catch (e) {
+            alert("Failed to send request");
         }
     };
 
@@ -180,6 +210,10 @@ export default function UnionsPage() {
                                     value={createName}
                                     onChange={(e) => setCreateName(e.target.value)}
                                 />
+                                {/* TODO: Update createUnion to accept location/description
+                                    For now, we just create with name. User can edit settings later.
+                                    Or I should update createUnion action now?
+                                */}
                                 <button
                                     onClick={handleCreate}
                                     className="w-full bg-primary text-primary-foreground py-2 rounded-md font-medium hover:bg-primary/90"
@@ -191,42 +225,106 @@ export default function UnionsPage() {
                     </TabsContent>
 
                     <TabsContent value="discover">
-                        <div className="max-w-2xl mx-auto space-y-6">
-                            <div className="p-6 border rounded-xl bg-card">
-                                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                                    <ArrowRightLeft className="h-5 w-5" />
-                                    Request Alliance
+                        <div className="max-w-4xl mx-auto space-y-8">
+                            {/* Search Section */}
+                            <div className="space-y-4">
+                                <h3 className="text-xl font-semibold">Browse Unions</h3>
+                                <div className="flex flex-col md:flex-row gap-4">
+                                    <input
+                                        placeholder="Search by name..."
+                                        className="flex-1 p-3 border rounded-lg bg-background"
+                                        value={searchQuery}
+                                        onChange={e => setSearchQuery(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                                    />
+                                    <input
+                                        placeholder="Location (e.g. Springfield)"
+                                        className="flex-1 md:max-w-xs p-3 border rounded-lg bg-background"
+                                        value={searchLocation}
+                                        onChange={e => setSearchLocation(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                                    />
+                                    <button
+                                        onClick={handleSearch}
+                                        disabled={searching}
+                                        className="bg-primary text-primary-foreground px-6 py-3 rounded-lg font-medium"
+                                    >
+                                        {searching ? "Searching..." : "Search"}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Results */}
+                            <div className="grid gap-4 md:grid-cols-2">
+                                {searchResults.length === 0 && !searching ? (
+                                    <div className="col-span-2 text-center py-12 text-muted-foreground border-dashed border rounded-xl">
+                                        Use the search bar to find unions.
+                                    </div>
+                                ) : (
+                                    searchResults.map((u: any) => (
+                                        <div key={u.id} className="border rounded-xl p-6 bg-card flex justify-between items-start">
+                                            <div>
+                                                <h4 className="font-bold text-lg">{u.name}</h4>
+                                                {u.location && (
+                                                    <div className="text-sm text-muted-foreground mb-1">📍 {u.location}</div>
+                                                )}
+                                                <p className="text-sm text-muted-foreground line-clamp-2 mt-2">{u.description || "No description provided."}</p>
+                                                <div className="mt-4 flex items-center gap-2 text-xs font-medium bg-secondary/50 w-fit px-2 py-1 rounded">
+                                                    <Users className="h-3 w-3" />
+                                                    {u.member_count?.[0]?.count || 0} Members
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col gap-2">
+                                                <button
+                                                    onClick={() => handleRequestJoin(u.id)}
+                                                    className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90"
+                                                >
+                                                    Request Invite
+                                                </button>
+                                                {unions.length > 0 && (
+                                                    <button
+                                                        onClick={() => {
+                                                            alert("Alliance feature coming soon in V2");
+                                                        }}
+                                                        className="border border-primary text-primary px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/5"
+                                                    >
+                                                        Details
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            {/* Legacy Alliance Request (Still useful for direct codes) */}
+                            <div className="mt-12 pt-8 border-t">
+                                <h3 className="text-md font-medium mb-4 flex items-center gap-2">
+                                    <ArrowRightLeft className="h-4 w-4" />
+                                    Have a direct invite code?
                                 </h3>
-                                <p className="text-sm text-muted-foreground mb-4">
-                                    Connect with other unions to coordinate actions.
-                                </p>
-                                <div className="space-y-4">
+                                <div className="flex flex-col md:flex-row gap-4 max-w-2xl">
                                     <select
                                         value={selectedUnionId}
-                                        onChange={(e) => {
-                                            setSelectedUnionId(e.target.value);
-                                            loadAllies(e.target.value);
-                                        }}
-                                        className="w-full p-2 border rounded-md"
+                                        onChange={(e) => setSelectedUnionId(e.target.value)}
+                                        className="p-2 border rounded-md"
                                     >
                                         {unions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                                     </select>
                                     <input
                                         placeholder="Target Union Invite Code"
-                                        className="w-full p-2 border rounded-md"
+                                        className="flex-1 p-2 border rounded-md"
                                         value={allianceCode}
                                         onChange={(e) => setAllianceCode(e.target.value)}
                                     />
                                     <button
                                         onClick={handleRequestAlliance}
-                                        className="w-full bg-primary text-primary-foreground py-2 rounded-md font-medium hover:bg-primary/90"
+                                        className="bg-secondary text-secondary-foreground px-4 py-2 rounded-md font-medium"
                                     >
-                                        Send Alliance Request
+                                        Connect
                                     </button>
                                 </div>
                             </div>
-
-                            {/* Placeholder for future Discovery features (Map/Industry List) */}
                         </div>
                     </TabsContent>
 
