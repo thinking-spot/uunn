@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
+import { BottomNav } from "@/components/layout/BottomNav";
 import { Sheet } from "@/components/ui/simple-sheet";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
@@ -26,9 +27,11 @@ export default function ProtectedLayout({
 
                 <div className="flex-1 flex flex-col h-full overflow-hidden">
                     <TopBar onMenuClick={() => setMobileMenuOpen(true)} />
-                    <main className="flex-1 overflow-y-auto bg-secondary/10">
+                    {/* Add bottom padding for BottomNav on mobile */}
+                    <main className="flex-1 overflow-y-auto bg-secondary/10 pb-16 md:pb-0">
                         {children}
                     </main>
+                    <BottomNav onOpenMenu={() => setMobileMenuOpen(true)} />
                 </div>
             </div>
         </ProtectedRoute>

@@ -1,6 +1,6 @@
 'use server';
 
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@/auth';
 
 export async function createUnionAction(name: string, encryptedKeyForCreator: string) {
@@ -202,3 +202,39 @@ export async function getInviteAction(inviteId: string) {
     };
 }
 
+// DASHBOARD ACTIONS
+export async function getDashboardStatsAction(unionId: string) {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+
+    // Use admin to ensure we get counts without RLS friction for summary data
+
+    // 1. Active Votes
+    const { count: activeVotes } = await supabaseAdmin
+        .from('Votes')
+        .select('*', { count: 'exact', head: true })
+        .eq('union_id', unionId)
+        .eq('status', 'open');
+
+    // 2. Recent Documents
+    const { data: recentDocs } = await supabaseAdmin
+        .from('Documents')
+        .select('id, title, updated_at')
+        .eq('union_id', unionId)
+        .order('updated_at', { ascending: false })
+        .limit(3);
+
+    // 3. Member Count
+    const { count: memberCount } = await supabaseAdmin
+        .from('Memberships')
+        .select('*', { count: 'exact', head: true })
+        .eq('union_id', unionId);
+
+    return {
+        stats: {
+            activeVotes: activeVotes || 0,
+            recentDocs: recentDocs || [],
+            memberCount: memberCount || 0
+        }
+    };
+}

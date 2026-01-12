@@ -1,6 +1,6 @@
 'use server';
 
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@/auth';
 
 export type Document = {
@@ -14,7 +14,9 @@ export async function createDocumentAction(unionId: string, title: string, conte
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
-    const { data, error } = await supabase
+    console.log("Creating document:", { unionId, userId: session.user.id, title });
+
+    const { data, error } = await supabaseAdmin
         .from('Documents')
         .insert({
             union_id: unionId,
@@ -27,7 +29,7 @@ export async function createDocumentAction(unionId: string, title: string, conte
 
     if (error) {
         console.error("Create Document Error:", error);
-        return { error: "Failed to create document" };
+        return { error: `Failed to create document: ${error.message}` };
     }
     return { success: true, document: data };
 }
@@ -36,7 +38,7 @@ export async function getUnionDocumentsAction(unionId: string) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
-    const { data: documents, error } = await supabase
+    const { data: documents, error } = await supabaseAdmin
         .from('Documents')
         .select('*')
         .eq('union_id', unionId)
@@ -51,7 +53,7 @@ export async function getDocumentAction(docId: string) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
-    const { data: document, error } = await supabase
+    const { data: document, error } = await supabaseAdmin
         .from('Documents')
         .select('*')
         .eq('id', docId)
@@ -66,7 +68,7 @@ export async function updateDocumentAction(docId: string, content: string) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
         .from('Documents')
         .update({ content, updated_at: new Date().toISOString() })
         .eq('id', docId);
