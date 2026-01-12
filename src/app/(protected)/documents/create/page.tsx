@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Loader2, Save, Send, Wand2, ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { createDocumentAction } from "@/lib/document-actions";
+import { createDocumentAction, updateDocumentAction, getDocumentAction } from "@/lib/document-actions";
 import { generateDocumentDraft } from "@/lib/gemini";
 import { getUserUnions, Union } from "@/lib/client-actions/unions";
 import { cn } from "@/lib/utils";
@@ -46,13 +46,12 @@ function WizardContent() {
     useEffect(() => {
         if (docId) {
             setLoading(true);
-            getDocument(docId).then(doc => {
+            getDocumentAction(docId).then(({ document: doc }) => {
                 if (doc) {
                     setTitle(doc.title);
                     setContent(doc.content);
-                    // Mock metadata load
-                    setNarrative(doc.metadata?.narrative || "");
-                    setSolution(doc.metadata?.solution || "");
+                    // Mock metadata load from DB or just assume defaults for MVP as schema is simple
+                    // The simple DB schema just has title/content
                 }
                 setLoading(false);
             });
@@ -89,7 +88,7 @@ function WizardContent() {
         try {
             const metadata = { date, narrative, solution, voteThreshold, voteDate: "", memberMessage: "" };
             if (docId) {
-                await updateDocument(docId, { title, content, metadata });
+                await updateDocumentAction(docId, content);
             } else {
                 const newId = await createDocument(user.uid, selectedUnionId, templateId || "generic", title, metadata);
                 router.replace(`/documents/create?id=${newId}`);
