@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Search, MoreVertical, Paperclip, Send, ShieldCheck, Lock, Loader2, MessageSquare } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { getUserUnions, Union } from "@/services/unionService";
+import { getUserUnions, Union } from "@/lib/client-actions/unions";
 import { useMessages, MessageData } from "@/hooks/useMessages";
 import { importPrivateKey, unwrapKey, encryptContent, decryptContent } from "@/lib/crypto";
 import ProtectedRoute from "@/components/ProtectedRoute";

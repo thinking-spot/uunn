@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
-import { getUserUnions, Union } from "@/services/unionService";
+import { getUserUnions, Union } from "@/lib/client-actions/unions";
 
 interface UnionContextType {
     unions: Union[];

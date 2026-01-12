@@ -12,7 +12,7 @@ import {
     getUnion,
     createSecureInvite,
     Union
-} from "@/services/unionService";
+} from "@/lib/client-actions/unions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import ProtectedRoute from "@/components/ProtectedRoute";
 

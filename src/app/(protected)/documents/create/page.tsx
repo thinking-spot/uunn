@@ -4,9 +4,9 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Loader2, Save, Send, Wand2, ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { createDocument, updateDocument, getDocument } from "@/services/documentService";
+import { createDocumentAction } from "@/lib/document-actions";
 import { generateDocumentDraft } from "@/lib/gemini";
-import { getUserUnions, Union } from "@/services/unionService";
+import { getUserUnions, Union } from "@/lib/client-actions/unions";
 import { cn } from "@/lib/utils";
 
 function WizardContent() {

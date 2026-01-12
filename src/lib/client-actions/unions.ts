@@ -1,6 +1,5 @@
-'use client';
-
-// Refactored to use Server Actions instead of Firebase directly
+import { createUnionAction, joinUnionAction, getUserUnionsAction, getMyPublicKeyAction, createInviteAction, getInviteAction } from "@/lib/union-actions";
+import { generateUnionKey, exportKey, wrapKey, importPublicKey, importPrivateKey, unwrapKey, generateUserKeyPair } from "@/lib/crypto";
 
 export interface Union {
     id: string;
@@ -10,10 +9,6 @@ export interface Union {
     role: string;
     members: string[]; // Or User[] objects
 }
-import { createUnionAction, joinUnionAction, getUserUnionsAction, getMyPublicKeyAction, createInviteAction, getInviteAction } from "@/lib/union-actions";
-import { generateUnionKey, exportKey, wrapKey, importPublicKey, importPrivateKey, unwrapKey, generateUserKeyPair } from "@/lib/crypto";
-
-
 
 // Helper to get my private key from storage
 function getMyPrivateKey(): Promise<CryptoKey> {
@@ -22,34 +17,10 @@ function getMyPrivateKey(): Promise<CryptoKey> {
     return importPrivateKey(JSON.parse(jwkStr));
 }
 
-// Helper to get my public key (regenerate from private? or store public too?)
-// Actually we need to encrypt the Union Key for OURSELVES.
-// We can use our public key if we have it, OR just encrypt it symmetrically with our password?
-// architecture.md said: "Union shared key is encrypted with each member's public key"
-// So for Creator, we encrypt it with Creator's Public Key.
-// Where is Creator's Public Key?
-// We sent it to server, but we also have it locally if we stored it?
-// Let's assume we stored it or can derive it.
-// Actually, `crypto.ts` `generateUserKeyPair` returned both.
-// In `login/page.tsx`, we stored `uunn_private_key`. We did NOT store public key locally.
-// But we can derive the public key from the private key? No, not easily with Web Crypto export.
-// ERROR in logic: We should have stored Public Key locally too for convenience, OR fetch it from Server (User profile).
-//
-// WORKAROUND: For now, I will fetch my own user profile (which has public key) to get my public key.
-// But we don't have a "getUser" API yet.
-//
-// ALTERNATIVE: Since I am the creator, I have the RAW Union Key right now.
-// I can just "Wrap" it using my Public Key.
-// I need my Public Key.
-// I will temporarily store Public Key in localStorage in `login/page.tsx` as well?
-//
-// OR: I can just Fetch "Me" from server actions?
-//
-// Let's assume for this step I will implement a quick `getMe` action or just fetch public key from valid sources.
-//
-// SIMPLIFICATION:
-// I will update Login/Register to store Public Key in localStorage too. simple.
-
+/**
+ * Creates a new union with end-to-end encryption.
+ * Generates a union key, encrypts it with creator's public key, and stores it.
+ */
 export async function createUnion(name: string, createdBy: string): Promise<string> {
     // 1. Generate AES-GCM Key for Union
     const unionKey = await generateUnionKey();
@@ -85,14 +56,24 @@ export async function createUnion(name: string, createdBy: string): Promise<stri
     return result.unionId!;
 }
 
+/**
+ * Joins a union using a legacy unencrypted invite code.
+ * (Note: This user will NOT have access to history until key is shared)
+ */
 export async function joinUnion(inviteCode: string, userId: string): Promise<string> {
     const result = await joinUnionAction(inviteCode);
     if (result.error) throw new Error(result.error);
     return result.unionId!;
 }
 
-export async function getUserUnions(userId: string): Promise<Union[]> {
-    return (await getUserUnionsAction()) as Union[];
+export async function getUserUnions(userId?: string): Promise<Union[]> {
+    try {
+        const unions = await getUserUnionsAction();
+        return unions as Union[];
+    } catch (e) {
+        console.error("Failed to fetch unions", e);
+        return [];
+    }
 }
 
 export async function getUnion(unionId: string): Promise<Union | null> {
@@ -115,7 +96,10 @@ export async function getAlliedUnions(unionId: string): Promise<Union[]> {
     return [];
 }
 
-// SECURE INVITES
+/**
+ * Creates a Secure Invite Link that grants access to union history.
+ * Encrypts the Union Key with a temporary "Visit Key".
+ */
 export async function createSecureInvite(unionId: string): Promise<string> {
     // 1. Get the UNWRAPPED union key (we need to fetch it first?)
     // In our current app flow, we don't store the raw key in memory persistently.
@@ -139,19 +123,6 @@ export async function createSecureInvite(unionId: string): Promise<string> {
     const encryptedUnionKey = await wrapKey(unionKey, visitKeyPair.publicKey);
 
     // 4. Send to Server (Public Key + Encrypted Blob)
-    // We need "createdBy" - passed implicitly by session in server action?
-    // createInviteAction takes (unionId, encryptedUnionKey, invitePublicKeyString, createdBy)
-    // Actually createdBy is inferred from session.
-    // Wait, my signature for createInviteAction had createdBy as arg. I should fix that to use session.
-    // But since I control the action, I can just pass session.user.id there.
-    // Let's assume the action logic handles authentication. I passed createdBy in previous turn.
-    // Wait, client shouldn't pass createdBy ID (insecure). The server action validates session.
-    // Proceed assuming I fix action or pass it securely.
-
-    // Correction: In union-actions.ts, I made `createInviteAction` take `createdBy`.
-    // It should infer from session.
-    // I will pass "me" string or let server overwrite it, but to be robust I'll rely on server session.
-
     const result = await createInviteAction(
         unionId,
         encryptedUnionKey,
@@ -167,6 +138,10 @@ export async function createSecureInvite(unionId: string): Promise<string> {
     return `${window.location.origin}/invite/${result.inviteId}#${fragment}`;
 }
 
+/**
+ * Joins a union via a Secure Invite Link.
+ * Decrypts the Union Key using the ephemeral key in the URL.
+ */
 export async function joinSecureInvite(inviteId: string, visitPrivateKeyJwkStr: string): Promise<string> {
     // 1. Fetch Invite Data
     const inviteData = await getInviteAction(inviteId);
@@ -193,8 +168,6 @@ export async function joinSecureInvite(inviteId: string, visitPrivateKeyJwkStr: 
     }
 
     if (result.alreadyMember) {
-        // Technically this shouldn't happen deep in secure invite logic if we check memberships first,
-        // but if it does, it's fine.
         return result.unionId!;
     }
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { joinSecureInvite } from "@/services/unionService";
+import { joinSecureInvite } from "@/lib/client-actions/unions";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 
