@@ -7,8 +7,7 @@ import {
     searchUnionsAction,
     requestJoinUnionAction,
     getPendingAllianceRequestsAction,
-    respondToAllianceRequestAction,
-    Union
+    respondToAllianceRequestAction
 } from "@/lib/union-actions"; // Direct server actions
 import {
     createUnion,
@@ -18,6 +17,8 @@ import {
     getAlliedUnions,
     getUnion,
     createSecureInvite,
+    Union
+} from "@/lib/client-actions/unions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
@@ -25,7 +26,7 @@ import { useUnion } from "@/context/UnionContext";
 
 export default function UnionsPage() {
     const { user } = useAuth();
-    const { unions, refreshUnions, setActiveUnion } = useUnion();
+    const { unions, activeUnion, refreshUnions, setActiveUnion } = useUnion();
     const [alliedUnions, setAlliedUnions] = useState<Union[]>([]);
     // loading is handled by UnionContext for unions, but we might want local loading for actions
     const [actionLoading, setActionLoading] = useState(false);

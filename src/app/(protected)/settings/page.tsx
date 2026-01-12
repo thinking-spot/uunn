@@ -2,15 +2,44 @@
 
 import { useState, useEffect } from "react";
 import { useUnion } from "@/context/UnionContext";
-import { updateUnionSettingsAction, getUnion } from "@/lib/client-actions/unions"; // We need to export updateUnionSettingsAction from client-actions OR import server action directly? 
-// Ideally we import server action directly in Next.js App Router for client components usually fine if 'use server' is at top of action file.
+import { getUnion } from "@/lib/client-actions/unions";
 import { updateUnionSettingsAction as updateSettings } from "@/lib/union-actions";
 // Note: importing server action directly into Client Component is valid.
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label"; // Assuming we have these or use standard labels
-import { Loader2, Save } from "lucide-react";
+
+import { Loader2, Save, Bell } from "lucide-react";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
+
+function PushNotificationSettings() {
+    const { isSubscribed, subscribe, loading, error } = usePushNotifications();
+
+    return (
+        <div className="flex items-center justify-between p-4 border rounded">
+            <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary/10 rounded-full text-primary">
+                    <Bell className="h-5 w-5" />
+                </div>
+                <div>
+                    <p className="font-medium">Push Notifications</p>
+                    <p className="text-xs text-muted-foreground">
+                        {isSubscribed ? "You are receiving notifications." : "Enable to receive alerts for messages."}
+                    </p>
+                </div>
+            </div>
+            <Button
+                variant={isSubscribed ? "outline" : "default"}
+                size="sm"
+                onClick={subscribe}
+                disabled={loading || isSubscribed}
+            >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : isSubscribed ? "Enabled" : "Enable"}
+            </Button>
+            {error && <p className="text-destructive text-xs">{error}</p>}
+        </div>
+    );
+}
 
 export default function SettingsPage() {
     const { activeUnion, refreshUnions } = useUnion();
@@ -41,7 +70,7 @@ export default function SettingsPage() {
                 if (u) {
                     setLocation(u.location || "");
                     setDescription(u.description || "");
-                    setIsPublic(u.is_public !== false); // default true
+                    setIsPublic(u.isPublic !== false); // default true
                 }
                 setInitLoading(false);
             });
@@ -135,6 +164,11 @@ export default function SettingsPage() {
                                 <label htmlFor="public-toggle" className="text-sm font-medium cursor-pointer">
                                     Make Union Publicly Searchable
                                 </label>
+                            </div>
+
+                            <div className="pt-4 border-t">
+                                <h3 className="text-lg font-medium mb-4">Notifications</h3>
+                                <PushNotificationSettings />
                             </div>
                         </>
                     )}
