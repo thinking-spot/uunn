@@ -1,6 +1,6 @@
 'use server';
 
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@/auth';
 
 export type VoteData = {
@@ -25,8 +25,10 @@ export async function createVoteAction(unionId: string, title: string, descripti
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
+    console.log("Creating vote:", { unionId, userId: session.user.id, title });
+
     // 1. Create Vote
-    const { data: vote, error } = await supabase
+    const { data: vote, error } = await supabaseAdmin
         .from('Votes')
         .insert({
             union_id: unionId,
@@ -51,7 +53,7 @@ export async function createVoteAction(unionId: string, title: string, descripti
             document_id: docId
         }));
 
-        const { error: attachError } = await supabase
+        const { error: attachError } = await supabaseAdmin
             .from('VoteAttachments')
             .insert(attachments);
 
@@ -69,7 +71,7 @@ export async function getUnionVotesAction(unionId: string): Promise<{ votes?: Vo
     if (!session?.user?.id) return { error: "Not authenticated" };
 
     // 1. Fetch Votes with Attachments
-    const { data: votes, error } = await supabase
+    const { data: votes, error } = await supabaseAdmin
         .from('Votes')
         .select(`
             *,
@@ -82,40 +84,35 @@ export async function getUnionVotesAction(unionId: string): Promise<{ votes?: Vo
 
     if (error) return { error: "Failed to fetch votes" };
 
-    // 2. Fetch User's Votes (to show what they selected)
-    const { data: myResponses } = await supabase
+    const voteIds = votes.map(v => v.id);
+
+    // 2. Fetch All Responses (for aggregation)
+    const { data: allResponses } = await supabaseAdmin
         .from('VoteResponses')
-        .select('vote_id, choice')
-        .eq('user_id', session.user.id)
-        .in('vote_id', votes.map(v => v.id));
+        .select('vote_id, choice, user_id')
+        .in('vote_id', voteIds);
 
-    const myVoteMap = new Map(myResponses?.map(r => [r.vote_id, r.choice]));
-
-    // 3. Fetch Aggregate Results (This is heavy for MVP, maybe optimize later with a View or RPC)
-    // For now, we do a separate query or just fetch ALL responses if scale is small.
-    // Better: Helper RPC or `.select('choice', { count: 'exact' })`... wait, group by is hard in simple client.
-    // Let's just select ALL responses for these votes. MVP scale < 1000 votes usually.
-    // Optimization: Create a Database View `vote_results` that pre-aggregates.
-    // For now, I'll fetch raw responses for precision or correct logic.
-    const { data: allResponses } = await supabase
-        .from('VoteResponses')
-        .select('vote_id, choice')
-        .in('vote_id', votes.map(v => v.id));
-
-    // Aggregate in JS
+    // 3. Aggregate Results & Find My Vote
     const resultsMap = new Map<string, { yes: number, no: number, abstain: number, total: number }>();
+    const myVoteMap = new Map<string, string>(); // vote_id -> choice
 
     votes.forEach(v => {
         resultsMap.set(v.id, { yes: 0, no: 0, abstain: 0, total: 0 });
     });
 
     allResponses?.forEach(r => {
+        // Aggregate
         const stats = resultsMap.get(r.vote_id);
         if (stats) {
             stats.total++;
             if (r.choice === 'yes') stats.yes++;
             else if (r.choice === 'no') stats.no++;
             else if (r.choice === 'abstain') stats.abstain++;
+        }
+
+        // Check if it's my vote
+        if (r.user_id === session.user.id) {
+            myVoteMap.set(r.vote_id, r.choice);
         }
     });
 
@@ -124,7 +121,7 @@ export async function getUnionVotesAction(unionId: string): Promise<{ votes?: Vo
         ...v,
         my_vote: myVoteMap.get(v.id),
         results: resultsMap.get(v.id) || { yes: 0, no: 0, abstain: 0, total: 0 },
-        // @ts-ignore - Supabase type inference is tricky with nested joins
+        // @ts-ignore
         attached_documents: v.attachments?.map((a: any) => a.document) || []
     }));
 
@@ -135,7 +132,17 @@ export async function castVoteAction(voteId: string, choice: 'yes' | 'no' | 'abs
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
-    const { error } = await supabase
+    // Check if already voted
+    const { data: existing } = await supabaseAdmin
+        .from('VoteResponses')
+        .select('id')
+        .eq('vote_id', voteId)
+        .eq('user_id', session.user.id)
+        .single();
+
+    if (existing) return { error: "Already voted" };
+
+    const { error } = await supabaseAdmin
         .from('VoteResponses')
         .insert({
             vote_id: voteId,
@@ -144,11 +151,8 @@ export async function castVoteAction(voteId: string, choice: 'yes' | 'no' | 'abs
         });
 
     if (error) {
-        // Check for unique violation
-        if (error.code === '23505') return { error: "You have already voted." };
         console.error("Cast Vote Error:", error);
-        return { error: "Failed to cast vote." };
+        return { error: "Failed to cast vote" };
     }
-
     return { success: true };
 }
