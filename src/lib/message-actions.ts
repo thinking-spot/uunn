@@ -1,6 +1,6 @@
 'use server';
 
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@/auth';
 
 export async function sendMessageAction(
@@ -12,7 +12,7 @@ export async function sendMessageAction(
     if (!session?.user?.id) return { error: "Not authenticated" };
 
     try {
-        const { error } = await supabase
+        const { error } = await supabaseAdmin
             .from('Messages')
             .insert({
                 union_id: unionId,
@@ -33,7 +33,7 @@ export async function getMessagesAction(unionId: string, limit = 50) {
     const session = await auth();
     if (!session?.user?.id) return [];
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
         .from('Messages')
         .select(`
             id,
