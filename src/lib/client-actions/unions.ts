@@ -1,4 +1,13 @@
-import { createUnionAction, joinUnionAction, getUserUnionsAction, getMyPublicKeyAction, createInviteAction, getInviteAction } from "@/lib/union-actions";
+import {
+    createUnionAction,
+    joinUnionAction,
+    getUserUnionsAction,
+    getMyPublicKeyAction,
+    createInviteAction,
+    getInviteAction,
+    requestAllianceAction as requestAllianceServer,
+    getAlliedUnionsAction as getAlliedUnionsServer
+} from "@/lib/union-actions";
 import { generateUnionKey, exportKey, wrapKey, importPublicKey, importPrivateKey, unwrapKey, generateUserKeyPair } from "@/lib/crypto";
 
 export interface Union {
@@ -87,16 +96,17 @@ export async function getUnion(unionId: string): Promise<Union | null> {
 }
 
 // Alliance functions - stubbed for now
-export async function requestAlliance(unionId: string, targetInviteCode: string) {
-    console.log("Alliance request not implemented yet");
-}
-
-export async function approveAlliance(unionId: string, targetUnionId: string) {
-    console.log("Alliance approve not implemented yet");
+// Alliance functions
+export async function requestAlliance(fromUnionId: string, toUnionId: string) {
+    const result = await requestAllianceServer(fromUnionId, toUnionId);
+    if (result.error) throw new Error(result.error);
+    return result;
 }
 
 export async function getAlliedUnions(unionId: string): Promise<Union[]> {
-    return [];
+    const result = await getAlliedUnionsServer(unionId);
+    if (result.error) throw new Error(result.error);
+    return result.allies as Union[];
 }
 
 /**

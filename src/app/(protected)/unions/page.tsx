@@ -4,6 +4,13 @@ import { useState, useEffect } from "react";
 import { Copy, Plus, Users, ArrowRightLeft, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import {
+    searchUnionsAction,
+    requestJoinUnionAction,
+    getPendingAllianceRequestsAction,
+    respondToAllianceRequestAction,
+    Union
+} from "@/lib/union-actions"; // Direct server actions
+import {
     createUnion,
     joinUnion,
     getUserUnions,
@@ -11,10 +18,6 @@ import {
     getAlliedUnions,
     getUnion,
     createSecureInvite,
-    searchUnionsAction,
-    requestJoinUnionAction,
-    Union
-} from "@/lib/client-actions/unions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
@@ -329,12 +332,15 @@ export default function UnionsPage() {
                     </TabsContent>
 
                     <TabsContent value="allied">
-                        <div className="max-w-4xl mx-auto">
+                        <div className="max-w-4xl mx-auto space-y-8">
+                            {/* Pending Alliance Requests */}
+                            <PendingAllianceRequests unionId={activeUnion?.id} />
+
                             <h3 className="text-lg font-semibold mb-4">Allied Unions</h3>
                             {alliedUnions.length === 0 ? (
                                 <div className="rounded-lg border border-dashed p-12 text-center">
                                     <ShieldCheck className="mx-auto h-8 w-8 text-muted-foreground/50 mb-2" />
-                                    <p className="text-muted-foreground">No alliances yet.</p>
+                                    <p className="text-muted-foreground">No confirmed alliances yet.</p>
                                 </div>
                             ) : (
                                 <div className="grid gap-4 md:grid-cols-2">
@@ -346,11 +352,11 @@ export default function UnionsPage() {
                                                 </div>
                                                 <div>
                                                     <div className="font-medium">{ally.name}</div>
-                                                    <div className="text-xs text-muted-foreground">Ally</div>
+                                                    <div className="text-xs text-muted-foreground">Alliance Active</div>
                                                 </div>
                                             </div>
                                             <div className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded-full font-medium">
-                                                Active
+                                                Partners
                                             </div>
                                         </div>
                                     ))}
@@ -361,6 +367,44 @@ export default function UnionsPage() {
                 </Tabs>
             </div>
         </ProtectedRoute>
+    );
+}
+
+function PendingAllianceRequests({ unionId }: { unionId?: string }) {
+    const [requests, setRequests] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (unionId) load();
+    }, [unionId]);
+
+    const load = async () => {
+        if (!unionId) return;
+        const { requests: data } = await getPendingAllianceRequestsAction(unionId);
+        if (data) setRequests(data);
+    };
+
+    const handleRespond = async (id: string, accept: boolean) => {
+        await respondToAllianceRequestAction(id, accept);
+        load();
+    };
+
+    if (requests.length === 0) return null;
+
+    return (
+        <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-6">
+            <h3 className="font-semibold text-yellow-800 mb-2">Pending Alliance Requests</h3>
+            <div className="space-y-2">
+                {requests.map(req => (
+                    <div key={req.requestId} className="flex items-center justify-between bg-white p-3 rounded border border-yellow-100">
+                        <span className="font-medium">{req.union.name} <span className="text-xs font-normal text-muted-foreground mr-2">wants to connect</span></span>
+                        <div className="flex gap-2">
+                            <button onClick={() => handleRespond(req.requestId, false)} className="text-sm px-3 py-1 text-red-600 hover:bg-red-50 rounded">Deny</button>
+                            <button onClick={() => handleRespond(req.requestId, true)} className="text-sm px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90">Accept</button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
     );
 }
 
