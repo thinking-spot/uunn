@@ -189,8 +189,13 @@ export async function joinSecureInvite(inviteId: string, visitPrivateKeyJwkStr: 
     // 5. Join
     const result = await joinUnionAction(inviteId, myEncryptedKey);
     if (result.error) {
-        if (result.alreadyMember) return result.unionId!;
         throw new Error(result.error);
+    }
+
+    if (result.alreadyMember) {
+        // Technically this shouldn't happen deep in secure invite logic if we check memberships first,
+        // but if it does, it's fine.
+        return result.unionId!;
     }
 
     return result.unionId!;

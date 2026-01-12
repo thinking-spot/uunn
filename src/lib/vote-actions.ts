@@ -95,6 +95,7 @@ export async function getUnionVotesAction(unionId: string): Promise<{ votes?: Vo
     // 3. Aggregate Results & Find My Vote
     const resultsMap = new Map<string, { yes: number, no: number, abstain: number, total: number }>();
     const myVoteMap = new Map<string, string>(); // vote_id -> choice
+    const userId = session.user.id;
 
     votes.forEach(v => {
         resultsMap.set(v.id, { yes: 0, no: 0, abstain: 0, total: 0 });
@@ -111,7 +112,7 @@ export async function getUnionVotesAction(unionId: string): Promise<{ votes?: Vo
         }
 
         // Check if it's my vote
-        if (r.user_id === session.user.id) {
+        if (r.user_id === userId) {
             myVoteMap.set(r.vote_id, r.choice);
         }
     });

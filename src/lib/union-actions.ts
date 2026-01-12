@@ -193,10 +193,12 @@ export async function getInviteAction(inviteId: string) {
 
     if (error || !invite) return { error: 'Invite not found or expired' };
 
+    const union = Array.isArray(invite.union) ? invite.union[0] : invite.union;
+
     return {
         id: invite.id,
-        unionName: invite.union.name,
-        unionId: invite.union.id,
+        unionName: union?.name,
+        unionId: union?.id,
         encryptedUnionKey: invite.encrypted_union_key,
         invitePublicKey: invite.invite_public_key
     };
