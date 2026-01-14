@@ -11,7 +11,8 @@ export async function createUnionAction(name: string, encrypted_shared_key: stri
         .from('Unions')
         .insert({
             name,
-            created_by: session.user.id
+            creator_id: session.user.id,
+            invite_code: Math.random().toString(36).substring(2, 10).toUpperCase() // Simple random code
         })
         .select()
         .single();
@@ -43,36 +44,44 @@ export async function joinUnionAction(inviteCode: string, encrypted_shared_key?:
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
-    // 1. Find Union by Invite Code (or ID if inviteCode is ID)
-    // Legacy support: inviteCode might be just the ID if open? Or the 'invite_code' column.
-    // For now assuming inviteCode wraps the ID or we look up by ID for public join? 
-    // Actually our previous logic for 'joinUnion' (legacy) used 'invite_code' column?
-    // Let's assume input matches 'id' for now given context, OR we query by `invite_code`.
+    // 1. Resolve Union ID from Invite Code
+    let unionId = inviteCode;
 
-    // In our `legacy` join (JoinUnionComponent), user types a code.
-    // Let's check if it matches ID or invite_code.
-    let unionId = inviteCode; // Assume ID first
+    // Check if it's a valid UUID (skip lookup if so, assuming direct join) - simple regex
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inviteCode);
 
-    // If it's a UUID, good. If not, maybe look up?
-    // Simplify: Just try insert. If it fails foreign key, it fails.
+    if (!isUuid) {
+        const { data: union } = await supabaseAdmin
+            .from('Unions')
+            .select('id')
+            .eq('invite_code', inviteCode)
+            .single();
 
-    // Check if already member
+        if (union) {
+            unionId = union.id;
+        } else {
+            return { error: "Invalid invite code" };
+        }
+    }
+
+    // 2. Check if already member (Memberships has no 'id' column, select union_id)
     const { data: existing } = await supabaseAdmin
         .from('Memberships')
-        .select('id')
+        .select('union_id')
         .eq('union_id', unionId)
         .eq('user_id', session.user.id)
         .single();
 
     if (existing) return { alreadyMember: true, unionId };
 
+    // 3. Insert Membership
     const { error } = await supabaseAdmin
         .from('Memberships')
         .insert({
             union_id: unionId,
             user_id: session.user.id,
             role: 'member',
-            encrypted_shared_key: encrypted_shared_key || "" // Null if joined without key (legacy)
+            encrypted_shared_key: encrypted_shared_key || ""
         });
 
     if (error) {
