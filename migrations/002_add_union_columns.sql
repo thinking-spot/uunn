@@ -1,0 +1,5 @@
+-- Add missing columns to Unions table
+ALTER TABLE "Unions" ADD COLUMN IF NOT EXISTS "location" TEXT;
+ALTER TABLE "Unions" ADD COLUMN IF NOT EXISTS "description" TEXT;
+ALTER TABLE "Unions" ADD COLUMN IF NOT EXISTS "is_public" BOOLEAN DEFAULT FALSE;
+ALTER TABLE "Unions" ADD COLUMN IF NOT EXISTS "industry" TEXT;

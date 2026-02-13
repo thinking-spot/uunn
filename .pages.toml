@@ -1,0 +1,22 @@
+# Cloudflare Pages Configuration for uunn.io
+# https://developers.cloudflare.com/pages/platform/branch-build-controls/
+
+[build]
+  command = "npm run pages:build"
+  destination = ".vercel/output/static"
+
+[build.environment]
+  NODE_VERSION = "18"
+  NEXT_PUBLIC_API_URL = "https://www.uunn.io/api"
+
+# Production environment
+[env.production]
+  [env.production.vars]
+  ENVIRONMENT = "production"
+  NEXT_PUBLIC_API_URL = "https://www.uunn.io/api"
+
+# Preview deployments (for branches)
+[env.preview]
+  [env.preview.vars]
+  ENVIRONMENT = "preview"
+  NEXT_PUBLIC_API_URL = "https://preview.uunn.io/api"
