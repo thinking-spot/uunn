@@ -18,7 +18,7 @@ const nextConfig: NextConfig = {
           key: "Content-Security-Policy",
           value: [
             "default-src 'self'",
-            "script-src 'self' 'wasm-unsafe-eval'",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
             `connect-src 'self' ${process.env.NEXT_PUBLIC_SUPABASE_URL || ''} wss://*.supabase.co`,
             "style-src 'self' 'unsafe-inline'",
             "img-src 'self' data: blob:",
