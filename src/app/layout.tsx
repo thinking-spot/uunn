@@ -30,7 +30,7 @@ export default function RootLayout({
             <UnionProvider>
               <ThemeProvider
                 attribute="class"
-                defaultTheme="system"
+                defaultTheme="light"
                 enableSystem
                 disableTransitionOnChange
               >
