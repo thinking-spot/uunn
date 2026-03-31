@@ -337,7 +337,7 @@ export async function getPendingJoinRequestsAction(unionId: string) {
 
     const { data, error } = await supabaseAdmin
         .from('UnionJoinRequests')
-        .select('id, created_at, user:users(username)')
+        .select('id, created_at, user:Users(username)')
         .eq('union_id', unionId)
         .eq('status', 'pending');
 
@@ -392,12 +392,15 @@ export async function getUnionMembersAction(unionId: string) {
         .select(`
             role,
             joined_at,
-            user:users(id, username)
+            user:Users(id, username)
         `)
         .eq('union_id', unionId)
         .order('joined_at', { ascending: true });
 
-    if (error) return { error: "Failed to fetch members" };
+    if (error) {
+        console.error("Fetch members error:", error);
+        return { error: "Failed to fetch members" };
+    }
 
     const members = data?.map((m: any) => ({
         id: m.user.id,
