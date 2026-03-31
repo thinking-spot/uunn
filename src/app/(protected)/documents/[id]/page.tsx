@@ -4,15 +4,17 @@ import { useState, useEffect } from "react";
 import { useUnion } from "@/context/UnionContext";
 import { getDecryptedDocument, updateEncryptedDocument, DecryptedDocument } from "@/lib/client-actions/documents";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save, Loader2, Lock } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Lock, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { formalizeDocumentAction } from "@/lib/document-actions";
 
 export default function DocumentEditorPage({ params }: { params: Promise<{ id: string }> }) {
     const { activeUnion, unions } = useUnion();
     const [doc, setDoc] = useState<DecryptedDocument | null>(null);
     const [content, setContent] = useState("");
     const [saving, setSaving] = useState(false);
+    const [formalizing, setFormalizing] = useState(false);
     const [loading, setLoading] = useState(true);
     const [docId, setDocId] = useState<string>("");
 
@@ -71,6 +73,27 @@ export default function DocumentEditorPage({ params }: { params: Promise<{ id: s
         setSaving(false);
     };
 
+    const handleFormalize = async () => {
+        if (!content.trim()) {
+            toast.error("Document is empty");
+            return;
+        }
+        setFormalizing(true);
+        try {
+            const result = await formalizeDocumentAction(content);
+            if (result.error) {
+                toast.error(result.error);
+            } else if (result.draft) {
+                setContent(result.draft);
+                toast.success("Document formalized by UnionAI");
+            }
+        } catch {
+            toast.error("Failed to formalize document");
+        } finally {
+            setFormalizing(false);
+        }
+    };
+
     if (loading) return <div className="p-8">Loading...</div>;
     if (!doc) return <div className="p-8">Document not found</div>;
 
@@ -88,10 +111,16 @@ export default function DocumentEditorPage({ params }: { params: Promise<{ id: s
                         </p>
                     </div>
                 </div>
-                <Button onClick={handleSave} disabled={saving}>
-                    {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                    Save
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" onClick={handleFormalize} disabled={formalizing || !content.trim()}>
+                        {formalizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                        UnionAI
+                    </Button>
+                    <Button onClick={handleSave} disabled={saving}>
+                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                        Save
+                    </Button>
+                </div>
             </header>
 
             <main className="flex-1 p-4 md:p-8 bg-muted/10 overflow-auto">

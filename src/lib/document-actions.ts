@@ -104,7 +104,7 @@ export async function generateDocumentDraftAction(
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const prompt = `
     You are an expert union organizer and legal aide. Draft a formal "${templateType}" document based on the following details:
@@ -137,6 +137,39 @@ export async function generateDocumentDraftAction(
         return { draft: response.text() };
     } catch {
         return { error: "Failed to generate document" };
+    }
+}
+
+export async function formalizeDocumentAction(markdownContent: string): Promise<{ draft?: string; error?: string }> {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+
+    const apiKey = process.env.GEMINI_API_KEY || "";
+    if (!apiKey) {
+        return { error: "Gemini API Key is not configured" };
+    }
+
+    if (!markdownContent.trim()) {
+        return { error: "Document content is empty" };
+    }
+
+    const { FORMALIZE_PROMPT } = await import('@/lib/document-templates');
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    try {
+        const result = await model.generateContent(FORMALIZE_PROMPT + markdownContent);
+        const response = result.response;
+        const text = response.text();
+        if (!text) {
+            console.error("Formalize: empty response from Gemini. Finish reason:", response.candidates?.[0]?.finishReason);
+            return { error: "Gemini returned an empty response — the content may have been blocked by safety filters." };
+        }
+        return { draft: text };
+    } catch (err) {
+        console.error("Formalize error:", err instanceof Error ? err.message : err);
+        return { error: `Failed to formalize document: ${err instanceof Error ? err.message : 'Unknown error'}` };
     }
 }
 
