@@ -49,6 +49,7 @@ export interface VoteData {
     vote_type: 'yes_no' | 'multiple_choice';
     created_at: string;
     created_by: string;
+    created_by_name?: string;
     my_vote?: string;
     attached_documents?: { id: string; title: string }[];
     results: {

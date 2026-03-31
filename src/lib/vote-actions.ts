@@ -64,11 +64,12 @@ export async function getUnionVotesAction(unionId: string): Promise<{ votes?: Vo
         return { error: "Not authorized — members only" };
     }
 
-    // 1. Fetch Votes with Attachments
+    // 1. Fetch Votes with Attachments and Creator
     const { data: votes, error } = await supabaseAdmin
         .from('Votes')
         .select(`
             *,
+            creator:Users!created_by (username),
             attachments:VoteAttachments (
                 document:Documents (id, title)
             )
@@ -114,6 +115,7 @@ export async function getUnionVotesAction(unionId: string): Promise<{ votes?: Vo
     // 4. Combine
     const finalVotes: VoteData[] = votes.map(v => ({
         ...v,
+        created_by_name: (v as any).creator?.username || 'Unknown',
         my_vote: myVoteMap.get(v.id),
         results: resultsMap.get(v.id) || { yes: 0, no: 0, abstain: 0, total: 0 },
         // @ts-ignore
@@ -135,10 +137,12 @@ export async function castVoteAction(voteId: string, choice: 'yes' | 'no' | 'abs
     // Verify membership via the vote's union
     const { data: vote } = await supabaseAdmin
         .from('Votes')
-        .select('union_id')
+        .select('union_id, status')
         .eq('id', voteId)
         .single();
     if (!vote) return { error: "Vote not found" };
+
+    if (vote.status === 'closed') return { error: "This vote is closed" };
 
     if (!await verifyMembership(vote.union_id, session.user.id)) {
         return { error: "Not authorized — members only" };
@@ -165,6 +169,39 @@ export async function castVoteAction(voteId: string, choice: 'yes' | 'no' | 'abs
     if (error) {
         console.error("Cast Vote Error:", error);
         return { error: "Failed to cast vote" };
+    }
+    return { success: true };
+}
+
+export async function closeVoteAction(voteId: string) {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+
+    const vv = validate(uuid, voteId);
+    if ('error' in vv) return { error: vv.error };
+
+    const { data: vote } = await supabaseAdmin
+        .from('Votes')
+        .select('union_id, created_by, status')
+        .eq('id', voteId)
+        .single();
+
+    if (!vote) return { error: "Vote not found" };
+    if (vote.status === 'closed') return { error: "Vote is already closed" };
+    if (vote.created_by !== session.user.id) return { error: "Only the vote creator can close it" };
+
+    if (!await verifyMembership(vote.union_id, session.user.id)) {
+        return { error: "Not authorized — members only" };
+    }
+
+    const { error } = await supabaseAdmin
+        .from('Votes')
+        .update({ status: 'closed' })
+        .eq('id', voteId);
+
+    if (error) {
+        console.error("Close Vote Error:", error);
+        return { error: "Failed to close vote" };
     }
     return { success: true };
 }
