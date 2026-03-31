@@ -1,3 +1,10 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+    title: "About uunn | Open Source Union Platform",
+    description: "uunn is an open-source, encrypted platform for workplace organizing. Learn how we protect workers with end-to-end encryption.",
+};
+
 export default function AboutPage() {
     return (
         <div className="container max-w-3xl mx-auto py-12 px-4">

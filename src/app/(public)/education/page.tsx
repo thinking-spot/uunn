@@ -1,3 +1,10 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+    title: "Education Hub | Worker Rights",
+    description: "Learn about your rights as a worker. Resources on NLRA Section 7, collective bargaining, organizing strategies, and more.",
+};
+
 export default function EducationPage() {
     return (
         <div className="container max-w-4xl mx-auto py-12 px-4">

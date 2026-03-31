@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+    title: "Start a Union | A Free, Secure App",
+    description: "A simple, secure way to create a union with anyone. E2E encrypted, open source, free for everyone. organize, vote, act, together.",
+};
 import Image from "next/image";
 import { Shield, Users, FileText } from "lucide-react";
 

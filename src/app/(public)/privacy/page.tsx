@@ -1,3 +1,10 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+    title: "Privacy Policy",
+    description: "uunn collects minimal data and encrypts everything end-to-end. Your messages, documents, and votes are never readable by us.",
+};
+
 export default function PrivacyPage() {
     return (
         <div className="container max-w-3xl mx-auto py-12 px-4">

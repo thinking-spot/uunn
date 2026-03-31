@@ -1,3 +1,10 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+    title: "Support Center",
+    description: "Get help with uunn. Guides for getting started, creating unions, inviting members, and using encrypted documents and votes.",
+};
+
 export default function SupportPage() {
     return (
         <div className="container max-w-3xl mx-auto py-12 px-4">

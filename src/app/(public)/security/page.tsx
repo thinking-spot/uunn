@@ -1,3 +1,10 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+    title: "Security Model",
+    description: "uunn uses AES-256 and RSA-2048 encryption to protect all union data. Zero-knowledge architecture means we can never read your content.",
+};
+
 export default function SecurityPage() {
     return (
         <div className="container max-w-3xl mx-auto py-12 px-4">
