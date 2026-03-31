@@ -28,7 +28,7 @@ export default function LandingPage() {
                                     uunn <br />a secure app for unions
                                 </h1>
                                 <p className="mx-auto max-w-[700px] text-gray-500 md:text-xl dark:text-gray-400">
-                                    The encrypted platform for workplace organizing. Connect with coworkers, coordinate actions, and build power — without your employer listening in.
+                                    The encrypted app for workplace organizing. Start a union, connect with coworkers, and coordinate actions — without employers listening in.
                                 </p>
                             </div>
                             <div className="space-x-4">
