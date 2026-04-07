@@ -38,11 +38,6 @@ export default function AboutPage() {
                     We are a collective of engineers, organizers, and designers who believe technology should serve the many, not the few.
                 </p>
 
-                <h2>Contact</h2>
-                <p>
-                    General Inquiries: <a href="mailto:hello@uunn.app" className="text-primary hover:underline">hello@uunn.app</a><br />
-                    Support: <a href="mailto:support@uunn.app" className="text-primary hover:underline">support@uunn.app</a>
-                </p>
             </div>
         </div>
     );

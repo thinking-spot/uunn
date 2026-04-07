@@ -78,12 +78,6 @@ export default function PrivacyPage() {
                     </div>
                 </section>
 
-                <section>
-                    <h2 className="text-xl font-bold mb-4">Contact</h2>
-                    <p className="text-muted-foreground">
-                        Questions about this policy? Contact us at <a href="mailto:support@uunn.app" className="text-primary hover:underline">support@uunn.app</a>.
-                    </p>
-                </section>
             </div>
         </div>
     );
