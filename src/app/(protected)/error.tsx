@@ -13,7 +13,7 @@ export default function ProtectedError({
     reset: () => void;
 }) {
     useEffect(() => {
-        // Error captured by protected route error boundary
+        import("@sentry/nextjs").then(Sentry => Sentry.captureException(error));
     }, [error]);
 
     return (

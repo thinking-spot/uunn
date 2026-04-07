@@ -39,6 +39,7 @@
   "exclude": [
     "node_modules",
     "_backup",
-    "old2-techloop-old"
+    "old2-techloop-old",
+    "src/__tests__"
   ]
 }

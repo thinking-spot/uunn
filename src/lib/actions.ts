@@ -1,6 +1,6 @@
 'use server';
 
-import { signIn } from '@/auth';
+import { signIn, auth } from '@/auth';
 import { AuthError } from 'next-auth';
 import { isRedirectError } from 'next/dist/client/components/redirect-error';
 import { z } from 'zod';
@@ -85,6 +85,54 @@ export async function register(
 
     // Return null = success. Client will handle signIn separately.
     return null;
+}
+
+// --- Profile Actions ---
+
+export async function getUserProfileAction() {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+
+    const { data, error } = await supabaseAdmin
+        .from('Users')
+        .select('username, created_at, location, preferred_contact')
+        .eq('id', session.user.id)
+        .single();
+
+    if (error || !data) return { error: "Failed to load profile" };
+    return { profile: data };
+}
+
+export async function updateUserProfileAction(location: string, preferredContact: string) {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+
+    const { error } = await supabaseAdmin
+        .from('Users')
+        .update({
+            location: location || null,
+            preferred_contact: preferredContact || null,
+        })
+        .eq('id', session.user.id);
+
+    if (error) return { error: "Failed to update profile" };
+    return { success: true };
+}
+
+export async function deleteAccountAction() {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+
+    const { error } = await supabaseAdmin
+        .from('Users')
+        .delete()
+        .eq('id', session.user.id);
+
+    if (error) {
+        console.error("Failed to delete account:", error);
+        return { error: "Failed to delete account" };
+    }
+    return { success: true };
 }
 
 export async function getVaultAction(username: string) {

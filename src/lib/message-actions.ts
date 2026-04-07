@@ -2,7 +2,6 @@
 
 import { supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@/auth';
-import { notifyUnionMembersAction } from '@/lib/push-actions';
 import { rateLimit } from '@/lib/rate-limit';
 import { validate, messageContent, uuid } from '@/lib/validation';
 import { verifyMembership } from '@/lib/auth-helpers';
@@ -44,19 +43,6 @@ export async function sendMessageAction(
             .insert(payload);
 
         if (error) throw error;
-
-        // Trigger Notification (Async, don't block heavily? Actually safer to await or fire-and-forget logic)
-        // We'll await it to ensure it runs before serverless function spins down, but catch errors.
-        try {
-            await notifyUnionMembersAction(unionId, session.user.id, {
-                title: 'New Message',
-                body: 'You have a new encrypted message.',
-                url: `/messages`
-            });
-        } catch (pushError) {
-            console.warn("Failed to trigger push notifications:", pushError);
-            // Don't fail the message send
-        }
 
         return { success: true };
     } catch (error: any) {

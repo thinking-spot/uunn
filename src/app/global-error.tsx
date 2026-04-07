@@ -13,7 +13,8 @@ export default function Error({
     reset: () => void;
 }) {
     useEffect(() => {
-        // Error captured by error boundary
+        // Report to Sentry
+        import("@sentry/nextjs").then(Sentry => Sentry.captureException(error));
     }, [error]);
 
     return (
