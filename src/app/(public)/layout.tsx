@@ -13,7 +13,7 @@ export default function PublicLayout({
             </main>
             <footer className="flex flex-col gap-2 sm:flex-row py-6 w-full shrink-0 items-center px-4 md:px-6 border-t">
                 <div className="flex items-center gap-2">
-                    <Image src="/logo.png" alt="uunn" width={20} height={20} />
+                    <Link href="/"><Image src="/logo.png" alt="uunn" width={30} height={30} /></Link>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                         &copy; 2026 uunn. Open source.
                     </p>

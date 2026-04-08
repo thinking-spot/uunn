@@ -15,7 +15,8 @@ export const metadata: Metadata = {
 
 export default function EducationPage() {
     return (
-        <div className="container max-w-4xl mx-auto py-12 px-4">
+        <div className="container px-4 md:px-6 py-12">
+          <div className="max-w-4xl mx-auto">
             <h1 className="text-4xl font-bold mb-2">Education Hub</h1>
             <p className="text-xl text-muted-foreground mb-8">
                 Knowledge base for worker rights and organizing.
@@ -57,6 +58,7 @@ export default function EducationPage() {
                     );
                 })}
             </div>
+          </div>
         </div>
     );
 }
