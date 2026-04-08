@@ -159,7 +159,7 @@ function LoginForm() {
                                 type="password"
                                 name="password"
                                 required
-                                minLength={6}
+                                minLength={isRegistering ? 12 : 1}
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                             />

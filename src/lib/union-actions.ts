@@ -26,7 +26,10 @@ export async function createUnionAction(
     if (location && location.length > 200) return { error: "Location too long" };
     if (description && description.length > 2000) return { error: "Description too long" };
 
-    const inviteCode = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+    // Generate a high-entropy invite code (24 URL-safe chars ≈ 143 bits)
+    const bytes = new Uint8Array(18); // 18 bytes = 144 bits → 24 base64url chars
+    crypto.getRandomValues(bytes);
+    const inviteCode = Buffer.from(bytes).toString('base64url').slice(0, 24);
 
     const insertData: Record<string, unknown> = {
         name,
@@ -82,6 +85,9 @@ export async function setInviteKeyAction(unionId: string, inviteKeyBlob: string,
 }
 
 export async function getInviteKeyAction(inviteCode: string) {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+
     const { data, error } = await supabaseAdmin
         .from('Unions')
         .select('id, invite_key_blob, invite_key_salt')
@@ -102,18 +108,14 @@ export async function joinUnionAction(inviteCode: string, encrypted_shared_key?:
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
-    // Resolve invite code to union ID — input may be a UUID (direct ID) or a short invite code
-    let unionId = inviteCode;
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(inviteCode)) {
-        const { data: union } = await supabaseAdmin
-            .from('Unions')
-            .select('id')
-            .eq('invite_code', inviteCode)
-            .single();
-        if (!union) return { error: "Invalid invite code" };
-        unionId = union.id;
-    }
+    // Resolve invite code to union ID — always require a valid invite code
+    const { data: union } = await supabaseAdmin
+        .from('Unions')
+        .select('id')
+        .eq('invite_code', inviteCode)
+        .single();
+    if (!union) return { error: "Invalid invite code" };
+    const unionId = union.id;
 
     // Check if already member
     const { data: existing } = await supabaseAdmin
@@ -284,6 +286,17 @@ export async function getUnionByInviteCodeAction(code: string) {
 // --- Discovery ---
 
 export async function searchUnionsAction(query: string, location?: string) {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+
+    // Validate inputs
+    if (query && query.length > 200) return { error: "Query too long" };
+    if (location && location.length > 200) return { error: "Location too long" };
+
+    // Rate limit: 20 searches per minute per user
+    const { allowed } = rateLimit(`search:${session.user.id}`, 20, 60_000);
+    if (!allowed) return { error: "Too many searches. Please slow down." };
+
     let dbQuery = supabaseAdmin
         .from('Unions')
         .select('id, name, location, description, member_count:Memberships(count), is_public')
@@ -352,6 +365,7 @@ export async function respondToJoinRequestAction(requestId: string, accept: bool
     // 1. Get request details first to verify authorization
     const { data: req } = await supabaseAdmin.from('UnionJoinRequests').select('*').eq('id', requestId).single();
     if (!req) return { error: "Request not found" };
+    if (req.status !== 'pending') return { error: "Request already processed" };
 
     // 2. Verify caller is admin of the target union
     if (!await verifyAdmin(req.union_id, session.user.id)) {

@@ -28,7 +28,7 @@ export default function Error({
                 </CardHeader>
                 <CardContent>
                     <p className="text-sm text-muted-foreground">
-                        {error.message || "An unexpected error occurred. Please try again."}
+                        An unexpected error occurred. Please try again.
                     </p>
                 </CardContent>
                 <CardFooter>

@@ -169,7 +169,7 @@ export async function formalizeDocumentAction(markdownContent: string): Promise<
         return { draft: text };
     } catch (err) {
         console.error("Formalize error:", err instanceof Error ? err.message : err);
-        return { error: `Failed to formalize document: ${err instanceof Error ? err.message : 'Unknown error'}` };
+        return { error: "Failed to formalize document" };
     }
 }
 

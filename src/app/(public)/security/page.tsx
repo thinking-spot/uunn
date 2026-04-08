@@ -14,7 +14,10 @@ export default function SecurityPage() {
                 <div className="bg-primary/5 p-6 rounded-xl border border-primary/20">
                     <h2 className="text-xl font-bold mb-2">End-to-End Encryption</h2>
                     <p className="text-sm">
-                        uunn encrypts all messages, documents, and votes on your device using the Web Crypto API before they leave your browser. The server only stores ciphertext — we can never read your content.
+                        uunn encrypts message content and document content on your device using the Web Crypto API before they leave your browser. The server only stores ciphertext for these fields.
+                    </p>
+                    <p className="text-sm mt-2 text-muted-foreground">
+                        <strong>Note:</strong> Vote titles, vote descriptions, and document titles are currently stored unencrypted to support server-side features like search and display. We are working to encrypt these fields in a future release.
                     </p>
                 </div>
 
@@ -45,7 +48,7 @@ export default function SecurityPage() {
                         <li>All encryption and decryption happens client-side in your browser.</li>
                         <li>Private keys are stored in session storage and cleared on logout.</li>
                         <li>Passwords are hashed with bcrypt before storage — we never see plaintext passwords.</li>
-                        <li>No analytics, no IP logging, no tracking cookies.</li>
+                        <li>No tracking cookies, no IP logging. We use Sentry for error monitoring only — it receives anonymized error reports with PII stripped, but no user content.</li>
                     </ul>
                 </section>
 
@@ -67,6 +70,15 @@ export default function SecurityPage() {
                         <li>Metadata (who is in which union, message timestamps) is visible to the server, though not to external observers.</li>
                         <li>If you lose your password and private key, your data cannot be recovered.</li>
                     </ul>
+                </section>
+
+                <section>
+                    <h2 className="text-xl font-bold mb-4">AI Document Drafting</h2>
+                    <div className="bg-amber-500/10 p-4 rounded-md border border-amber-500/30">
+                        <p className="text-sm text-muted-foreground">
+                            uunn offers optional AI-powered document drafting and formalization features. When you use these features, the plaintext content you provide is sent to Google&apos;s Gemini API for processing. <strong>This is the only case where plaintext content leaves your browser.</strong> These features are entirely opt-in — if you do not use them, your content remains fully encrypted end-to-end.
+                        </p>
+                    </div>
                 </section>
 
                 <section>
