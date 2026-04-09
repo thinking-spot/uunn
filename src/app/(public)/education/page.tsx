@@ -11,11 +11,23 @@ export const metadata: Metadata = {
     title: "Education Hub | Worker Rights & Organizing",
     description:
         "Learn about your rights as a worker. Guides on NLRA Section 7, concerted activity, organizing strategies, legal aid, and templates for petitions and demand letters.",
+    openGraph: {
+        title: "Education Hub | Worker Rights & Organizing | uunn",
+        description:
+            "Learn about your rights as a worker. Guides on NLRA Section 7, concerted activity, organizing strategies, legal aid, and templates for petitions and demand letters.",
+        type: "website",
+    },
+    twitter: {
+        card: "summary",
+        title: "Education Hub | Worker Rights & Organizing | uunn",
+        description:
+            "Learn about your rights as a worker. Guides on NLRA Section 7, concerted activity, organizing strategies, legal aid, and templates for petitions and demand letters.",
+    },
 };
 
 export default function EducationPage() {
     return (
-        <div className="container px-4 md:px-6 py-12">
+        <div className="w-full px-4 md:px-6 py-12">
           <div className="max-w-4xl mx-auto">
             <h1 className="text-4xl font-bold mb-2">Education Hub</h1>
             <p className="text-xl text-muted-foreground mb-8">

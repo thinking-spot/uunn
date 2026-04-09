@@ -3,11 +3,22 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
     title: "Support Center",
     description: "Get help with uunn. Guides for getting started, creating unions, inviting members, and using encrypted documents and votes.",
+    openGraph: {
+        title: "Support Center | uunn",
+        description: "Get help with uunn. Guides for getting started, creating unions, inviting members, and using encrypted documents and votes.",
+        type: "website",
+    },
+    twitter: {
+        card: "summary",
+        title: "Support Center | uunn",
+        description: "Get help with uunn. Guides for getting started, creating unions, inviting members, and using encrypted documents and votes.",
+    },
 };
 
 export default function SupportPage() {
     return (
-        <div className="container max-w-3xl mx-auto py-12 px-4">
+        <div className="w-full px-4 md:px-6 py-12">
+          <div className="max-w-4xl mx-auto">
             <h1 className="text-3xl font-bold mb-8">Support Center</h1>
 
             <div className="grid gap-8">
@@ -51,6 +62,7 @@ export default function SupportPage() {
                     </a>
                 </section>
             </div>
+          </div>
         </div>
     );
 }

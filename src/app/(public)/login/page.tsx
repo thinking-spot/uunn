@@ -120,7 +120,7 @@ function LoginForm() {
     };
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-secondary/20 p-4">
+        <div className="flex flex-1 items-center justify-center bg-secondary/20 p-4">
             <Card className="w-full max-w-md">
                 <CardHeader>
                     <CardTitle className="text-2xl font-bold text-center">

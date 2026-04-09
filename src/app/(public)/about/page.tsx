@@ -3,12 +3,22 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
     title: "About uunn | Open Source Union Platform",
     description: "uunn is an open-source, encrypted platform for workplace organizing. Learn how we protect workers with end-to-end encryption.",
+    openGraph: {
+        title: "About uunn | Open Source Union Platform | uunn",
+        description: "uunn is an open-source, encrypted platform for workplace organizing. Learn how we protect workers with end-to-end encryption.",
+        type: "website",
+    },
+    twitter: {
+        card: "summary",
+        title: "About uunn | Open Source Union Platform | uunn",
+        description: "uunn is an open-source, encrypted platform for workplace organizing. Learn how we protect workers with end-to-end encryption.",
+    },
 };
 
 export default function AboutPage() {
     return (
-        <div className="container px-4 md:px-6 py-12">
-          <div className="max-w-3xl mx-auto">
+        <div className="w-full px-4 md:px-6 py-12">
+          <div className="max-w-4xl mx-auto">
             <h1 className="text-4xl font-bold mb-6">About uunn</h1>
 
             <div className="prose prose-slate dark:prose-invert max-w-none">

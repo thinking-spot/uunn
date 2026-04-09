@@ -6,6 +6,16 @@ import { Shield, Users, FileText, Lock, Eye, Code, ArrowRight } from "lucide-rea
 export const metadata: Metadata = {
     title: "Start a Union | A Free, Secure App",
     description: "A simple, secure way to create a union with anyone. E2E encrypted, open source, free for everyone. organize, vote, act, together.",
+    openGraph: {
+        title: "Start a Union | A Free, Secure App | uunn",
+        description: "A simple, secure way to create a union with anyone. E2E encrypted, open source, free for everyone. organize, vote, act, together.",
+        type: "website",
+    },
+    twitter: {
+        card: "summary",
+        title: "Start a Union | A Free, Secure App | uunn",
+        description: "A simple, secure way to create a union with anyone. E2E encrypted, open source, free for everyone. organize, vote, act, together.",
+    },
 };
 
 export default function LandingPage() {

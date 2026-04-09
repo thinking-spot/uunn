@@ -5,11 +5,21 @@ import { Shield, Users, FileText, MessageSquare, Vote, Handshake, ArrowRight, Ch
 export const metadata: Metadata = {
     title: "How to Start a Union | Free Encrypted Platform",
     description: "Learn how to start a union, form a union, or join a union with uunn — the free, encrypted app for workplace organizing. No email required, fully anonymous.",
+    openGraph: {
+        title: "How to Start a Union | Free Encrypted Platform | uunn",
+        description: "Learn how to start a union, form a union, or join a union with uunn — the free, encrypted app for workplace organizing. No email required, fully anonymous.",
+        type: "website",
+    },
+    twitter: {
+        card: "summary",
+        title: "How to Start a Union | Free Encrypted Platform | uunn",
+        description: "Learn how to start a union, form a union, or join a union with uunn — the free, encrypted app for workplace organizing. No email required, fully anonymous.",
+    },
 };
 
 export default function HowItWorksPage() {
     return (
-        <div className="container px-4 md:px-6 py-12">
+        <div className="w-full px-4 md:px-6 py-12">
           <div className="max-w-4xl mx-auto">
             <h1 className="text-4xl font-bold mb-4">How to Start a Union with uunn</h1>
             <p className="text-xl text-muted-foreground mb-12">

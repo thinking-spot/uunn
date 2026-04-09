@@ -59,7 +59,7 @@ export default function JoinPage({ params }: { params: Promise<{ code: string }>
     };
 
     return (
-        <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-muted/30">
+        <div className="flex flex-1 flex-col items-center justify-center p-4 bg-muted/30">
             <div className="w-full max-w-md rounded-xl border bg-card p-8 shadow-lg">
                 <div className="flex items-center justify-center gap-2 mb-8">
                     <ShieldCheck className="h-6 w-6 text-primary" />

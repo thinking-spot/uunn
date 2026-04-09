@@ -3,12 +3,22 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
     title: "Security Model",
     description: "uunn uses AES-256 and RSA-2048 encryption to protect all union data. Zero-knowledge architecture means we can never read your content.",
+    openGraph: {
+        title: "Security Model | uunn",
+        description: "uunn uses AES-256 and RSA-2048 encryption to protect all union data. Zero-knowledge architecture means we can never read your content.",
+        type: "website",
+    },
+    twitter: {
+        card: "summary",
+        title: "Security Model | uunn",
+        description: "uunn uses AES-256 and RSA-2048 encryption to protect all union data. Zero-knowledge architecture means we can never read your content.",
+    },
 };
 
 export default function SecurityPage() {
     return (
-        <div className="container px-4 md:px-6 py-12">
-          <div className="max-w-3xl mx-auto">
+        <div className="w-full px-4 md:px-6 py-12">
+          <div className="max-w-4xl mx-auto">
             <h1 className="text-3xl font-bold mb-8">Security Model</h1>
 
             <div className="space-y-8">

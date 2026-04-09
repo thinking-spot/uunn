@@ -12,8 +12,8 @@ export function ArticleLayout({ article }: { article: EducationArticle }) {
         .filter(Boolean) as EducationArticle[];
 
     return (
-        <div className="container px-4 md:px-6 py-12">
-          <div className="max-w-3xl mx-auto">
+        <div className="w-full px-4 md:px-6 py-12">
+          <div className="max-w-4xl mx-auto">
             <Link
                 href="/education"
                 className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary mb-6"

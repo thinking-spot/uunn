@@ -3,12 +3,22 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
     title: "Privacy Policy",
     description: "uunn collects minimal data and encrypts everything end-to-end. Your messages, documents, and votes are never readable by us.",
+    openGraph: {
+        title: "Privacy Policy | uunn",
+        description: "uunn collects minimal data and encrypts everything end-to-end. Your messages, documents, and votes are never readable by us.",
+        type: "website",
+    },
+    twitter: {
+        card: "summary",
+        title: "Privacy Policy | uunn",
+        description: "uunn collects minimal data and encrypts everything end-to-end. Your messages, documents, and votes are never readable by us.",
+    },
 };
 
 export default function PrivacyPage() {
     return (
-        <div className="container px-4 md:px-6 py-12">
-          <div className="max-w-3xl mx-auto">
+        <div className="w-full px-4 md:px-6 py-12">
+          <div className="max-w-4xl mx-auto">
             <h1 className="text-3xl font-bold mb-2">Privacy Policy</h1>
             <p className="text-sm text-muted-foreground mb-8">Effective April 7, 2026</p>
 

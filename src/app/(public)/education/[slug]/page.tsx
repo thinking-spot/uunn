@@ -29,6 +29,11 @@ export async function generateMetadata({
             type: "article",
             section: category?.title,
         },
+        twitter: {
+            card: "summary",
+            title: article.title,
+            description: article.description,
+        },
     };
 }
 
