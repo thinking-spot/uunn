@@ -146,9 +146,9 @@ export default function VotesPage() {
                                 value={newDesc} onChange={e => setNewDesc(e.target.value)}
                             />
                         </div>
-                        {availableDocs.length > 0 && (
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Attach Documents</label>
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Attach Documents</label>
+                            {availableDocs.length > 0 ? (
                                 <div className="grid grid-cols-2 gap-2">
                                     {availableDocs.map(doc => (
                                         <div
@@ -164,8 +164,16 @@ export default function VotesPage() {
                                         </div>
                                     ))}
                                 </div>
-                            </div>
-                        )}
+                            ) : (
+                                <div className="p-2 border rounded text-sm flex items-center gap-2 text-muted-foreground opacity-60 cursor-default">
+                                    <div className="w-4 h-4 rounded-full border border-muted-foreground flex-shrink-0" />
+                                    <FileText className="w-4 h-4 flex-shrink-0" />
+                                    <Link href="/documents" className="underline underline-offset-2 hover:text-foreground transition-colors">
+                                        Create a Document
+                                    </Link>
+                                </div>
+                            )}
+                        </div>
                     </CardContent>
                     <CardFooter className="justify-end gap-2">
                         <Button variant="ghost" onClick={() => { setIsCreating(false); setSelectedDocs([]); }}>Cancel</Button>
