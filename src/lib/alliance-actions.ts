@@ -5,6 +5,7 @@ import { auth } from '@/auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { validate, uuid, allianceMessageContent, encryptedPayload } from '@/lib/validation';
 import { RATE_LIMITS } from '@/lib/constants';
+import { logError } from '@/lib/log';
 
 // --- Authorization Helpers ---
 
@@ -64,7 +65,7 @@ export async function setAllianceKeysAction(
         .upsert(rows, { onConflict: 'alliance_id,user_id' });
 
     if (error) {
-        console.error("Set Alliance Keys Error:", error);
+        logError('setAllianceKeys failed', error);
         return { error: "Failed to set alliance keys" };
     }
     return { success: true };
@@ -165,7 +166,7 @@ export async function sendAllianceMessageAction(
         .insert(payload);
 
     if (error) {
-        console.error("Failed to send alliance message:", error);
+        logError('sendAllianceMessage failed', error);
         return { error: "Failed to send message" };
     }
     return { success: true };

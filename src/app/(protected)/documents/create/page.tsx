@@ -96,7 +96,7 @@ function WizardContent() {
         setLoading(true);
         try {
             if (docId) {
-                await updateEncryptedDocument(docId, content, union.encryptionKey);
+                await updateEncryptedDocument(docId, content, union.encryptionKey, selectedUnionId);
             } else {
                 const result = await createEncryptedDocument(selectedUnionId, title, content, union.encryptionKey);
                 if (result.error || !result.document) throw new Error(result.error);

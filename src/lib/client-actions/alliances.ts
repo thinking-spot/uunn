@@ -14,6 +14,7 @@ import {
     encryptContent,
     decryptContent
 } from "@/lib/crypto";
+import { aadFor } from "@/lib/aad";
 import { getMyPrivateKey } from "@/lib/client-crypto";
 
 /**
@@ -74,8 +75,12 @@ export async function sendEncryptedAllianceMessage(
     plaintext: string,
     allianceKey: CryptoKey
 ) {
-    const { cipherText, iv } = await encryptContent(plaintext, allianceKey);
     const id = crypto.randomUUID();
+    const { cipherText, iv } = await encryptContent(
+        plaintext,
+        allianceKey,
+        aadFor.allianceMessage(allianceId, id),
+    );
     const result = await sendAllianceMessageAction(allianceId, cipherText, iv, id);
     if (result.error) throw new Error(result.error);
     return { id, cipherText, iv };
@@ -95,7 +100,12 @@ export async function getDecryptedAllianceMessages(
     return Promise.all(
         messages.map(async (m) => {
             try {
-                const text = await decryptContent(m.ciphertext, m.iv, allianceKey);
+                const text = await decryptContent(
+                    m.ciphertext,
+                    m.iv,
+                    allianceKey,
+                    aadFor.allianceMessage(allianceId, m.id),
+                );
                 return { ...m, text };
             } catch {
                 return { ...m, text: "[Unable to decrypt]" };

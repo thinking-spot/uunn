@@ -7,6 +7,7 @@ import {
     getInviteAction,
     setInviteKeyAction,
     getInviteKeyAction,
+    rotateInviteAction,
     requestAllianceAction as requestAllianceServer,
     getAlliedUnionsAction as getAlliedUnionsServer,
     rotateUnionKeyAction,
@@ -51,7 +52,7 @@ export async function createUnion(name: string, createdBy: string, location?: st
 
     // 2. Get My Public Key
     // Try sessionStorage first
-    let pubKeyJwkStr = sessionStorage.getItem(STORAGE_KEYS.PUBLIC_KEY);
+    const pubKeyJwkStr = sessionStorage.getItem(STORAGE_KEYS.PUBLIC_KEY);
     let pubKeyJwk;
 
     if (pubKeyJwkStr) {
@@ -198,8 +199,31 @@ export async function createSecureInvite(unionId: string): Promise<string> {
 }
 
 /**
- * Removes a member and rotates the union encryption key.
- * This ensures the removed member cannot decrypt future messages.
+ * Generate a fresh high-entropy invite code (24 base64url chars, ≈143 bits).
+ * Client-side variant of the server-side generation in createUnionAction —
+ * used during invite rotation (C2).
+ */
+function newInviteCode(): string {
+    const bytes = new Uint8Array(18);
+    crypto.getRandomValues(bytes);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    const b64 = window.btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return b64.slice(0, 24);
+}
+
+/**
+ * Removes a member and rotates ALL of:
+ *   1. The union AES-GCM key (existing behavior)
+ *   2. The invite code (so the removed member can't reuse it)
+ *   3. The invite-code key escrow blob (encrypted with the NEW invite code,
+ *      wrapping the NEW union key — so even if the old invite code leaks,
+ *      it derives a key for which no escrow blob exists anymore)
+ *
+ * Without (2) and (3), a removed member who once saw the invite code could
+ * still call getInviteKeyAction, derive the old union key from the
+ * unchanged escrow, and decrypt historical messages — defeating the
+ * key-rotation step entirely.
  */
 export async function removeMemberAndRotateKey(unionId: string, memberId: string): Promise<void> {
     // 1. Remove the member first
@@ -226,9 +250,19 @@ export async function removeMemberAndRotateKey(unionId: string, memberId: string
         }
     }
 
-    // 5. Push rotated keys to server
+    // 5. Push rotated per-member keys to server
     const rotateResult = await rotateUnionKeyAction(unionId, wrappedKeys);
     if (rotateResult.error) throw new Error(rotateResult.error);
+
+    // 6. Rotate invite code + escrow blob bound to it. If anything below
+    //    fails, the union is in a slightly inconsistent state (new union key
+    //    distributed, old invite still present) — admins can call
+    //    refreshInviteKey to recover, but losing the rotation step here
+    //    weakens C2. Surface the failure loudly.
+    const code = newInviteCode();
+    const { blob, salt } = await encryptKeyWithCode(newUnionKey, code);
+    const inviteRotate = await rotateInviteAction(unionId, code, blob, salt);
+    if (inviteRotate.error) throw new Error(`Member removed and union key rotated, but invite rotation failed: ${inviteRotate.error}`);
 }
 
 /**

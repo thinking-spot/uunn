@@ -25,10 +25,10 @@ export default function SecurityPage() {
                 <div className="bg-primary/5 p-6 rounded-xl border border-primary/20">
                     <h2 className="text-xl font-bold mb-2">End-to-End Encryption</h2>
                     <p className="text-sm">
-                        uunn encrypts message content and document content on your device using the Web Crypto API before they leave your browser. The server only stores ciphertext for these fields.
+                        uunn encrypts message content, document content and titles, vote choices, vote titles, and vote descriptions on your device using the Web Crypto API before they leave your browser. The server only stores ciphertext for these fields.
                     </p>
                     <p className="text-sm mt-2 text-muted-foreground">
-                        <strong>Note:</strong> Vote titles, vote descriptions, and document titles are currently stored unencrypted to support server-side features like search and display. We are working to encrypt these fields in a future release.
+                        <strong>Note:</strong> Coarse metadata that the server needs in order to route requests — union names, usernames, membership lists, and timestamps — remains visible to the server. AI document drafting, when used, sends the prompt content to Google Gemini.
                     </p>
                 </div>
 

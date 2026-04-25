@@ -174,10 +174,12 @@ export default function UnionsPage() {
                                             </div>
                                         </div>
                                     </div>
+                                    {union.role === 'admin' && union.inviteCode ? (
                                     <div className="p-3 bg-muted/50 rounded-lg flex items-center justify-between mb-2">
                                         <code className="text-sm font-mono">{union.inviteCode}</code>
                                         <button
                                             onClick={() => {
+                                                if (!union.inviteCode) return;
                                                 navigator.clipboard.writeText(union.inviteCode)
                                                     .then(() => toast.success("Invite code copied!"))
                                                     .catch(() => toast.error("Failed to copy — try selecting and copying manually"));
@@ -188,6 +190,11 @@ export default function UnionsPage() {
                                             <Copy className="h-4 w-4" />
                                         </button>
                                     </div>
+                                    ) : (
+                                    <div className="p-3 bg-muted/30 rounded-lg text-xs text-muted-foreground mb-2">
+                                        Only admins can view invite codes.
+                                    </div>
+                                    )}
                                     <SecureInviteGenerator unionId={union.id} />
                                     {union.role === 'admin' && (
                                         <RefreshInviteKeyButton unionId={union.id} />

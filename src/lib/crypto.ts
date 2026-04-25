@@ -21,6 +21,7 @@ export async function exportKey(key: CryptoKey): Promise<JsonWebKey> {
 }
 
 export async function importPublicKey(jwk: JsonWebKey): Promise<CryptoKey> {
+    // Public keys never need to be re-exported once imported.
     return window.crypto.subtle.importKey(
         "jwk",
         jwk,
@@ -28,12 +29,16 @@ export async function importPublicKey(jwk: JsonWebKey): Promise<CryptoKey> {
             name: "RSA-OAEP",
             hash: "SHA-256",
         },
-        true,
+        false,
         ["encrypt"]
     );
 }
 
 export async function importPrivateKey(jwk: JsonWebKey): Promise<CryptoKey> {
+    // Private keys are only used for `decrypt`/unwrap. Marking the imported
+    // CryptoKey non-extractable means script context cannot exportKey() the
+    // raw private key — defense-in-depth against XSS exfiltration. The vault
+    // (encrypted at rest) remains the only persisted form of this key.
     return window.crypto.subtle.importKey(
         "jwk",
         jwk,
@@ -41,7 +46,7 @@ export async function importPrivateKey(jwk: JsonWebKey): Promise<CryptoKey> {
             name: "RSA-OAEP",
             hash: "SHA-256",
         },
-        true,
+        false,
         ["decrypt"]
     );
 }
@@ -74,19 +79,34 @@ export async function importSharedKey(jwk: JsonWebKey): Promise<CryptoKey> {
 }
 
 // 4. Content Encryption (AES-GCM)
-// Encrypts text/data with the Union Key.
-export async function encryptContent(content: string, key: CryptoKey): Promise<{ cipherText: string; iv: string }> {
+//
+// `aad` is optional Associated Data: bytes that are NOT encrypted but ARE
+// authenticated. Binding row identity (e.g. "message:<unionId>:<msgId>") in
+// AAD prevents a server-side adversary from "shuffling" ciphertext between
+// rows of the same union — moving a message between conversations or
+// replaying an old document blob into a new document row would fail
+// authentication during decryption.
+export async function encryptContent(
+    content: string,
+    key: CryptoKey,
+    aad?: string,
+): Promise<{ cipherText: string; iv: string }> {
     const encoder = new TextEncoder();
     const data = encoder.encode(content);
     const iv = window.crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV for AES-GCM
 
+    const params: AesGcmParams = {
+        name: "AES-GCM",
+        iv: iv as BufferSource,
+    };
+    if (aad !== undefined) {
+        params.additionalData = encoder.encode(aad) as BufferSource;
+    }
+
     const encryptedBuffer = await window.crypto.subtle.encrypt(
-        {
-            name: "AES-GCM",
-            iv: iv,
-        },
+        params,
         key,
-        data
+        data,
     );
 
     return {
@@ -96,21 +116,42 @@ export async function encryptContent(content: string, key: CryptoKey): Promise<{
 }
 
 // 5. Content Decryption (AES-GCM)
-export async function decryptContent(cipherText: string, iv: string, key: CryptoKey): Promise<string> {
+//
+// If `aad` is provided, decryption first attempts with AAD bound; on auth
+// failure it retries without AAD. This lets new ciphertext (written with
+// AAD) and legacy ciphertext (written without AAD before H3) both round-trip
+// transparently. Once enough time has passed for legacy rows to be migrated,
+// the fallback can be removed and AAD enforced strictly.
+export async function decryptContent(
+    cipherText: string,
+    iv: string,
+    key: CryptoKey,
+    aad?: string,
+): Promise<string> {
     const data = base64ToArrayBuffer(cipherText);
     const ivBuffer = base64ToArrayBuffer(iv);
+    const encoder = new TextEncoder();
 
-    const decryptedBuffer = await window.crypto.subtle.decrypt(
-        {
-            name: "AES-GCM",
-            iv: ivBuffer,
-        },
-        key,
-        data
-    );
+    const baseParams: AesGcmParams = {
+        name: "AES-GCM",
+        iv: ivBuffer as BufferSource,
+    };
 
-    const decoder = new TextDecoder();
-    return decoder.decode(decryptedBuffer);
+    if (aad !== undefined) {
+        try {
+            const buf = await window.crypto.subtle.decrypt(
+                { ...baseParams, additionalData: encoder.encode(aad) as BufferSource },
+                key,
+                data,
+            );
+            return new TextDecoder().decode(buf);
+        } catch {
+            // Fall through to legacy (no-AAD) decrypt for backward compat.
+        }
+    }
+
+    const buf = await window.crypto.subtle.decrypt(baseParams, key, data);
+    return new TextDecoder().decode(buf);
 }
 
 // 6. Key Wrapping (RSA-OAEP)
@@ -179,8 +220,37 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 // 8. Key Vault (Backup & Recovery)
 // Encrypts the Private Key using the User's Password.
 
+// Vault format versions
+//
+// v1 (legacy): Vault is base64(iv || ciphertext). Salt stored separately
+//              in `vault_salt`. PBKDF2 100,000 iterations, SHA-256.
+//
+// v2 (current): Vault is base64(JSON envelope) with explicit version,
+//               KDF, and iteration count. Salt continues to be stored in
+//               `vault_salt` for schema compatibility. PBKDF2 600,000
+//               iterations (OWASP 2023+ minimum for SHA-256).
+//
+// On read, decryptVault auto-detects the format and uses appropriate params.
+// On write, encryptVault always emits v2.
+
+const VAULT_VERSION = 2 as const;
+const PBKDF2_ITER_V1 = 100_000;
+const PBKDF2_ITER_V2 = 600_000;
+
+interface VaultEnvelopeV2 {
+    v: 2;
+    kdf: 'PBKDF2-SHA256';
+    iter: number;
+    iv: string;
+    ct: string;
+}
+
 // Derive a strong encryption key from the user's password using PBKDF2
-async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promise<CryptoKey> {
+async function deriveKeyFromPassword(
+    password: string,
+    salt: Uint8Array,
+    iterations: number = PBKDF2_ITER_V2,
+): Promise<CryptoKey> {
     const encoder = new TextEncoder();
     const keyMaterial = await window.crypto.subtle.importKey(
         "raw",
@@ -194,7 +264,7 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
         {
             name: "PBKDF2",
             salt: salt as any,
-            iterations: 100000,
+            iterations,
             hash: "SHA-256",
         },
         keyMaterial,
@@ -208,8 +278,8 @@ export async function encryptVault(privateKeyJwk: JsonWebKey, password: string):
     // 1. Generate random salt
     const salt = window.crypto.getRandomValues(new Uint8Array(16));
 
-    // 2. Derive Key
-    const wrappingKey = await deriveKeyFromPassword(password, salt);
+    // 2. Derive Key (v2 iteration count)
+    const wrappingKey = await deriveKeyFromPassword(password, salt, PBKDF2_ITER_V2);
 
     // 3. Encrypt the JWK string
     const jwkString = JSON.stringify(privateKeyJwk);
@@ -218,27 +288,40 @@ export async function encryptVault(privateKeyJwk: JsonWebKey, password: string):
     const iv = window.crypto.getRandomValues(new Uint8Array(12));
 
     const encryptedContent = await window.crypto.subtle.encrypt(
-        {
-            name: "AES-GCM",
-            iv: iv,
-        },
+        { name: "AES-GCM", iv },
         wrappingKey,
         data
     );
 
-    // 4. Pack Salt + IV + Ciphertext
-    // Format: salt(16) + iv(12) + ciphertext
-    // Actually, easier to return Salt separate, and pack IV with content.
-    // Let's pack IV with Ciphertext like typically done: IV + Cipher => Base64
-
-    const combinedBuffer = new Uint8Array(iv.byteLength + encryptedContent.byteLength);
-    combinedBuffer.set(iv, 0);
-    combinedBuffer.set(new Uint8Array(encryptedContent), iv.byteLength);
+    // 4. Emit v2 envelope: base64-encoded JSON with version + KDF params.
+    const envelope: VaultEnvelopeV2 = {
+        v: VAULT_VERSION,
+        kdf: 'PBKDF2-SHA256',
+        iter: PBKDF2_ITER_V2,
+        iv: arrayBufferToBase64(iv.buffer as ArrayBuffer),
+        ct: arrayBufferToBase64(encryptedContent),
+    };
 
     return {
-        vault: arrayBufferToBase64(combinedBuffer.buffer),
-        salt: arrayBufferToBase64(salt.buffer as ArrayBuffer)
+        vault: window.btoa(JSON.stringify(envelope)),
+        salt: arrayBufferToBase64(salt.buffer as ArrayBuffer),
     };
+}
+
+/**
+ * Identify the vault format. Returns 'v1' for legacy raw `iv||ct` blobs,
+ * 'v2' for JSON envelopes. Used by login flow to decide whether to lazily
+ * re-encrypt the vault to the latest format.
+ */
+export function getVaultVersion(vaultBase64: string): 1 | 2 {
+    try {
+        const decoded = window.atob(vaultBase64);
+        const parsed = JSON.parse(decoded);
+        if (parsed && parsed.v === 2) return 2;
+    } catch {
+        // not JSON → legacy v1
+    }
+    return 1;
 }
 
 // 9. Invite Code Key Escrow
@@ -299,27 +382,47 @@ export async function decryptKeyWithCode(
 
 export async function decryptVault(vaultBase64: string, password: string, saltBase64: string): Promise<JsonWebKey> {
     const salt = new Uint8Array(base64ToArrayBuffer(saltBase64));
-    const combined = new Uint8Array(base64ToArrayBuffer(vaultBase64));
 
-    // Extract IV (12 bytes)
-    const iv = combined.slice(0, 12);
-    const data = combined.slice(12);
+    // Try v2 envelope first.
+    let iv: Uint8Array;
+    let ciphertext: Uint8Array;
+    let iterations: number;
 
-    const unwrappingKey = await deriveKeyFromPassword(password, salt);
+    let envelope: VaultEnvelopeV2 | null = null;
+    try {
+        const decoded = window.atob(vaultBase64);
+        const parsed = JSON.parse(decoded);
+        if (parsed && parsed.v === 2 && typeof parsed.iter === 'number') {
+            envelope = parsed as VaultEnvelopeV2;
+        }
+    } catch {
+        // Fall through to v1.
+    }
+
+    if (envelope) {
+        iv = new Uint8Array(base64ToArrayBuffer(envelope.iv));
+        ciphertext = new Uint8Array(base64ToArrayBuffer(envelope.ct));
+        iterations = envelope.iter;
+    } else {
+        // Legacy v1: vault is base64(iv(12) || ciphertext), 100k iterations.
+        const combined = new Uint8Array(base64ToArrayBuffer(vaultBase64));
+        iv = combined.slice(0, 12);
+        ciphertext = combined.slice(12);
+        iterations = PBKDF2_ITER_V1;
+    }
+
+    const unwrappingKey = await deriveKeyFromPassword(password, salt, iterations);
 
     try {
         const decryptedBuffer = await window.crypto.subtle.decrypt(
-            {
-                name: "AES-GCM",
-                iv: iv,
-            },
+            { name: "AES-GCM", iv: iv as BufferSource },
             unwrappingKey,
-            data
+            ciphertext as BufferSource
         );
 
         const decoder = new TextDecoder();
         return JSON.parse(decoder.decode(decryptedBuffer));
-    } catch (e) {
+    } catch {
         throw new Error("Invalid password or corrupted vault");
     }
 }

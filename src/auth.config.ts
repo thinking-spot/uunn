@@ -2,7 +2,10 @@ import type { NextAuthConfig } from 'next-auth';
 
 export const authConfig = {
     pages: {
-        signIn: '/login', // We'll create a custom login page later
+        signIn: '/login',
+        // Route NextAuth errors back to the login page rather than the default
+        // /api/auth/error page (which can leak NextAuth version/diagnostics).
+        error: '/login',
     },
     callbacks: {
         authorized({ auth, request: { nextUrl } }) {

@@ -74,6 +74,8 @@ function ProfileSettings() {
                 return;
             }
             // Clear crypto keys and sign out
+            const { clearKeys } = await import("@/lib/key-store");
+            clearKeys();
             sessionStorage.removeItem(STORAGE_KEYS.PRIVATE_KEY);
             sessionStorage.removeItem(STORAGE_KEYS.PUBLIC_KEY);
             await signOut({ redirect: true, redirectTo: "/login" });

@@ -3,9 +3,10 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@/auth';
 import { rateLimit } from '@/lib/rate-limit';
-import { validate, uuid, title as titleSchema, description as descSchema, unionSettingsInput, encryptedPayload } from '@/lib/validation';
+import { validate, uuid, title as titleSchema, description as descSchema, unionSettingsInput, encryptedPayload, inviteCode as inviteCodeSchema } from '@/lib/validation';
 import { verifyMembership, verifyAdmin } from '@/lib/auth-helpers';
 import { RATE_LIMITS } from '@/lib/constants';
+import { logError } from '@/lib/log';
 
 export async function createUnionAction(
     name: string,
@@ -48,7 +49,7 @@ export async function createUnionAction(
         .single();
 
     if (error) {
-        console.error("Create Union failed", error);
+        logError('createUnion failed', error);
         return { error: "Failed to create union" };
     }
 
@@ -63,7 +64,7 @@ export async function createUnionAction(
         });
 
     if (memberError) {
-        console.error("Add member failed", memberError);
+        logError('addMember failed', memberError);
         return { error: "Failed to add creator as member" };
     }
 
@@ -84,9 +85,60 @@ export async function setInviteKeyAction(unionId: string, inviteKeyBlob: string,
     return { success: true };
 }
 
+/**
+ * Rotate the union's invite code AND its invite-code key escrow blob in one
+ * atomic operation. Used after member removal (C2): the old invite code
+ * could otherwise be used by the removed member to derive the old union
+ * key from the unchanged escrow blob and decrypt historical messages.
+ *
+ * The client supplies a freshly-generated invite code + the new union key
+ * encrypted under PBKDF2(new_invite_code).
+ */
+export async function rotateInviteAction(
+    unionId: string,
+    newInviteCode: string,
+    newInviteKeyBlob: string,
+    newInviteKeySalt: string,
+) {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+    if (!await verifyAdmin(unionId, session.user.id)) return { error: "Not authorized — admin only" };
+
+    const codeV = validate(inviteCodeSchema, newInviteCode);
+    if ('error' in codeV) return { error: codeV.error };
+    const blobV = validate(encryptedPayload, newInviteKeyBlob);
+    if ('error' in blobV) return { error: blobV.error };
+    if (typeof newInviteKeySalt !== 'string' || newInviteKeySalt.length === 0 || newInviteKeySalt.length > 200) {
+        return { error: "Invalid salt" };
+    }
+
+    const { error } = await supabaseAdmin
+        .from('Unions')
+        .update({
+            invite_code: newInviteCode,
+            invite_key_blob: newInviteKeyBlob,
+            invite_key_salt: newInviteKeySalt,
+        })
+        .eq('id', unionId);
+
+    if (error) {
+        if ((error as any).code === '23505') return { error: "Invite code collision — please retry" };
+        logError('rotateInvite failed', error);
+        return { error: "Failed to rotate invite" };
+    }
+    return { success: true };
+}
+
 export async function getInviteKeyAction(inviteCode: string) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
+
+    const codeV = validate(inviteCodeSchema, inviteCode);
+    if ('error' in codeV) return { error: codeV.error };
+
+    // Throttle invite-code probing per-user to limit offline brute-force enabling
+    const { allowed } = rateLimit(`invite-key:${session.user.id}`, 20, 60_000);
+    if (!allowed) return { error: "Too many requests" };
 
     const { data, error } = await supabaseAdmin
         .from('Unions')
@@ -108,6 +160,21 @@ export async function joinUnionAction(inviteCode: string, encrypted_shared_key?:
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
+    const codeV = validate(inviteCodeSchema, inviteCode);
+    if ('error' in codeV) return { error: codeV.error };
+
+    // Throttle invite-code probing per-user
+    const { allowed } = rateLimit(`join:${session.user.id}`, 20, 60_000);
+    if (!allowed) return { error: "Too many requests. Please slow down." };
+
+    // A wrapped union key is required so the new member can decrypt history.
+    // The client should obtain this via the invite-code key escrow + re-wrap with their public key.
+    if (!encrypted_shared_key) {
+        return { error: "Missing encryption key — cannot join without it." };
+    }
+    const keyV = validate(encryptedPayload, encrypted_shared_key);
+    if ('error' in keyV) return { error: keyV.error };
+
     // Resolve invite code to union ID — always require a valid invite code
     const { data: union } = await supabaseAdmin
         .from('Unions')
@@ -120,10 +187,10 @@ export async function joinUnionAction(inviteCode: string, encrypted_shared_key?:
     // Check if already member
     const { data: existing } = await supabaseAdmin
         .from('Memberships')
-        .select('id')
+        .select('user_id')
         .eq('union_id', unionId)
         .eq('user_id', session.user.id)
-        .single();
+        .maybeSingle();
 
     if (existing) return { alreadyMember: true, unionId };
 
@@ -133,11 +200,11 @@ export async function joinUnionAction(inviteCode: string, encrypted_shared_key?:
             union_id: unionId,
             user_id: session.user.id,
             role: 'member',
-            encrypted_shared_key: encrypted_shared_key || "" // Null if joined without key (legacy)
+            encrypted_shared_key
         });
 
     if (error) {
-        console.error("Join failed", error);
+        logError('joinUnion insert failed');
         return { error: "Failed to join union" };
     }
 
@@ -165,14 +232,15 @@ export async function getUserUnionsAction() {
         .eq('user_id', session.user.id);
 
     if (error) {
-        console.error("Get Unions failed", error);
+        logError('getUserUnions failed');
         return [];
     }
 
+    // Only admins receive the raw invite_code; members do not.
     return data.map((m: any) => ({
         id: m.union.id,
         name: m.union.name,
-        inviteCode: m.union.invite_code,
+        inviteCode: m.role === 'admin' ? m.union.invite_code : undefined,
         encryptionKey: m.encrypted_shared_key,
         location: m.union.location,
         description: m.union.description,
@@ -229,13 +297,23 @@ export async function createInviteAction(unionId: string, encryptedUnionKey: str
         .single();
 
     if (error) {
-        console.error("Create Invite Failed", error);
+        logError('createInvite failed', error);
         return { error: "Failed" };
     }
     return { inviteId: data.id };
 }
 
 export async function getInviteAction(inviteId: string) {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+
+    const idV = validate(uuid, inviteId);
+    if ('error' in idV) return { error: idV.error };
+
+    // Throttle invite-id probing per-user
+    const { allowed } = rateLimit(`invite-fetch:${session.user.id}`, 30, 60_000);
+    if (!allowed) return { error: "Too many requests" };
+
     const { data, error } = await supabaseAdmin
         .from('UnionInvites')
         .select(`
@@ -390,6 +468,55 @@ export async function respondToJoinRequestAction(requestId: string, accept: bool
     return { success: true };
 }
 
+// --- Username Resolution ---
+
+/**
+ * Resolve userIds → usernames, gated by union co-membership.
+ *
+ * Returns a partial mapping: only ids belonging to users that share at least
+ * one union with the caller are populated. Used by the realtime message hook
+ * when a sender's username is not in the local cache. Replaces the previous
+ * direct-anon-Supabase read in src/lib/username-cache.ts which depended on
+ * permissive RLS to function.
+ */
+export async function resolveUsernamesAction(userIds: string[]): Promise<{ usernames?: Record<string, string>; error?: string }> {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+
+    if (!Array.isArray(userIds) || userIds.length === 0) return { usernames: {} };
+    if (userIds.length > 100) return { error: "Too many ids" };
+    for (const id of userIds) {
+        const v = validate(uuid, id);
+        if ('error' in v) return { error: "Invalid id in batch" };
+    }
+
+    // Find unions the caller belongs to.
+    const { data: myUnions } = await supabaseAdmin
+        .from('Memberships')
+        .select('union_id')
+        .eq('user_id', session.user.id);
+    const unionIds = (myUnions || []).map(m => m.union_id);
+    if (unionIds.length === 0) return { usernames: {} };
+
+    // Allowed targets: users who are members of any of those unions, intersected with the requested ids.
+    const { data: peers } = await supabaseAdmin
+        .from('Memberships')
+        .select('user_id')
+        .in('union_id', unionIds)
+        .in('user_id', userIds);
+    const allowedIds = Array.from(new Set((peers || []).map(p => p.user_id)));
+    if (allowedIds.length === 0) return { usernames: {} };
+
+    const { data: users } = await supabaseAdmin
+        .from('Users')
+        .select('id, username')
+        .in('id', allowedIds);
+
+    const map: Record<string, string> = {};
+    (users || []).forEach((u: any) => { map[u.id] = u.username; });
+    return { usernames: map };
+}
+
 // --- Members ---
 
 export async function getUnionMembersAction(unionId: string) {
@@ -406,13 +533,13 @@ export async function getUnionMembersAction(unionId: string) {
         .select(`
             role,
             joined_at,
-            user:Users(id, username)
+            user:Users(id, username, public_key)
         `)
         .eq('union_id', unionId)
         .order('joined_at', { ascending: true });
 
     if (error) {
-        console.error("Fetch members error:", error);
+        logError('getUnionMembers failed', error);
         return { error: "Failed to fetch members" };
     }
 
@@ -420,7 +547,11 @@ export async function getUnionMembersAction(unionId: string) {
         id: m.user.id,
         username: m.user.username,
         role: m.role,
-        joinedAt: m.joined_at
+        joinedAt: m.joined_at,
+        // public_key is the JWK-as-JSON-string. Fingerprints (H8) are
+        // computed client-side from this so out-of-band verification
+        // doesn't trust a server-computed value.
+        publicKey: m.user.public_key ?? null,
     })) || [];
 
     return { members };
@@ -521,7 +652,7 @@ export async function rotateUnionKeyAction(
             .eq('user_id', entry.userId);
 
         if (error) {
-            console.error(`Failed to rotate key for user ${entry.userId}:`, error);
+            logError('rotateUnionKey: per-member update failed', error);
         }
     }
 
@@ -582,6 +713,13 @@ export async function requestAllianceAction(fromUnionId: string, toUnionId: stri
 export async function getPendingAllianceRequestsAction(unionId: string) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
+
+    const uv = validate(uuid, unionId);
+    if ('error' in uv) return { error: uv.error };
+
+    if (!await verifyMembership(unionId, session.user.id)) {
+        return { error: "Not authorized — members only" };
+    }
 
     const { data, error } = await supabaseAdmin
         .from('UnionAlliances')
@@ -647,6 +785,13 @@ export async function getAlliedUnionsAction(unionId: string) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
+    const uv = validate(uuid, unionId);
+    if ('error' in uv) return { error: uv.error };
+
+    if (!await verifyMembership(unionId, session.user.id)) {
+        return { error: "Not authorized — members only" };
+    }
+
     const { data, error } = await supabaseAdmin
         .from('UnionAlliances')
         .select(`
@@ -689,7 +834,7 @@ export async function getDashboardStatsAction(unionId: string) {
 
     const { data: recentDocs } = await supabaseAdmin
         .from('Documents')
-        .select('id, title, updated_at')
+        .select('id, title, title_blob, title_iv, union_id, updated_at')
         .eq('union_id', unionId)
         .order('updated_at', { ascending: false })
         .limit(3);

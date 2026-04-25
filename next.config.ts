@@ -1,10 +1,10 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
-const isDev = process.env.NODE_ENV === 'development';
-
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Note: CSP is set per-request from middleware.ts (H1) so it can carry a
+  // fresh nonce. The other security headers are static and live here.
   headers: async () => [
     {
       source: "/(.*)",
@@ -14,21 +14,8 @@ const nextConfig: NextConfig = {
         { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
         { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-        { key: "X-XSS-Protection", value: "1; mode=block" },
-        ...(!isDev ? [{
-          key: "Content-Security-Policy",
-          value: [
-            "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-            `connect-src 'self' ${process.env.NEXT_PUBLIC_SUPABASE_URL || ''} wss://*.supabase.co *.sentry.io`,
-            "style-src 'self' 'unsafe-inline'",
-            "img-src 'self' data: blob:",
-            "font-src 'self'",
-            "frame-ancestors 'none'",
-            "base-uri 'self'",
-            "form-action 'self'",
-          ].join("; "),
-        }] : []),
+        { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+        { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
       ],
     },
   ],

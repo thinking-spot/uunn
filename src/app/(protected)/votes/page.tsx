@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useUnion } from "@/context/UnionContext";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
-import { createVoteAction, getUnionVotesAction, castVoteAction, closeVoteAction } from "@/lib/vote-actions";
+import { closeVoteAction } from "@/lib/vote-actions";
+import { castEncryptedVote, createEncryptedVote, getDecryptedUnionVotes } from "@/lib/client-actions/votes";
 import type { VoteData } from "@/lib/types";
 import { getUnionDocumentsAction } from "@/lib/document-actions";
 import type { Document } from "@/lib/types";
@@ -46,9 +47,13 @@ export default function VotesPage() {
     }, [isCreating, activeUnion]);
 
     const loadVotes = async () => {
-        if (!activeUnion) return;
+        if (!activeUnion || !user) return;
         setLoading(true);
-        const { votes: data } = await getUnionVotesAction(activeUnion.id);
+        const { votes: data } = await getDecryptedUnionVotes(
+            activeUnion.id,
+            activeUnion.encryptionKey,
+            user.uid,
+        );
         if (data) setVotes(data);
         setLoading(false);
     };
@@ -57,7 +62,13 @@ export default function VotesPage() {
         if (!activeUnion || !newTitle) return;
         setCreating(true);
         try {
-            const { error } = await createVoteAction(activeUnion.id, newTitle, newDesc, selectedDocs);
+            const { error } = await createEncryptedVote(
+                activeUnion.id,
+                newTitle,
+                newDesc,
+                selectedDocs,
+                activeUnion.encryptionKey,
+            );
             if (error) toast.error(error);
             else {
                 setIsCreating(false);
@@ -79,9 +90,10 @@ export default function VotesPage() {
     };
 
     const handleVote = async (voteId: string, choice: 'yes' | 'no' | 'abstain') => {
+        if (!activeUnion || !user) return;
         setCastingVote(voteId);
         try {
-            const { error } = await castVoteAction(voteId, choice);
+            const { error } = await castEncryptedVote(voteId, choice, activeUnion.encryptionKey, user.uid);
             if (error) toast.error(error);
             else loadVotes();
         } catch {
