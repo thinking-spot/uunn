@@ -6,6 +6,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { validate, messageContent, uuid } from '@/lib/validation';
 import { verifyMembership } from '@/lib/auth-helpers';
 import { RATE_LIMITS } from '@/lib/constants';
+import { logError } from '@/lib/log';
 
 export async function sendMessageAction(
     unionId: string,
@@ -46,7 +47,7 @@ export async function sendMessageAction(
 
         return { success: true };
     } catch (error: any) {
-        console.error("Failed to send message:", error);
+        logError('sendMessage failed', error);
         return { error: "Failed to send message" };
     }
 }
@@ -84,7 +85,7 @@ export async function getMessagesAction(unionId: string, limit = 50, before?: st
     const { data, error } = await query;
 
     if (error || !data) {
-        console.error("Error fetching messages:", error);
+        logError('getMessages failed', error);
         return { messages: [], hasMore: false };
     }
 

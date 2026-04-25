@@ -2,13 +2,14 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { signIn } from 'next-auth/react';
-import { register, getVaultAction } from '@/lib/actions';
+import { register, getVaultAction, upgradeVaultAction } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { toast } from "sonner";
 import { useSearchParams, useRouter } from 'next/navigation';
-import { generateUserKeyPair, exportKey, encryptVault, decryptVault } from '@/lib/crypto';
+import { generateUserKeyPair, exportKey, encryptVault, decryptVault, importPrivateKey, importPublicKey, getVaultVersion } from '@/lib/crypto';
 import { STORAGE_KEYS } from '@/lib/constants';
+import { setPrivateKey as cachePrivateKey, setPublicKey as cachePublicKey } from '@/lib/key-store';
 
 export default function LoginPage() {
     return (
@@ -50,39 +51,65 @@ function LoginForm() {
         const formData = new FormData(e.currentTarget);
         const username = formData.get('username') as string;
 
-        // Optimistically save private key to local storage
         if (isRegistering && privateKeyJwk) {
-            sessionStorage.setItem(STORAGE_KEYS.PRIVATE_KEY, JSON.stringify(privateKeyJwk));
+            // Cache the freshly-generated private key in module memory.
+            // It is NOT written to sessionStorage — see key-store.ts and H2.
+            try {
+                const importedPriv = await importPrivateKey(privateKeyJwk);
+                cachePrivateKey(importedPriv);
+            } catch {
+                // Non-fatal: import will be retried via unlock flow on next page load.
+            }
 
-            // Encrypt Vault for Backup
+            // Encrypt vault for backup (v2 envelope, PBKDF2 600k iterations).
             try {
                 const { vault, salt } = await encryptVault(privateKeyJwk, password);
                 formData.append('encryptedVault', vault);
                 formData.append('vaultSalt', salt);
-            } catch (err) {
+            } catch {
                 // Vault encryption failed silently
             }
         } else if (!isRegistering) {
-            // Login: Attempt to restore keys from Vault
+            // Login: derive private key from server-stored vault using the password.
             try {
                 const vaultData = await getVaultAction(username);
 
-                if (vaultData && !vaultData.error && vaultData.encryptedVault && vaultData.vaultSalt) {
+                if (vaultData && vaultData.encryptedVault && vaultData.vaultSalt) {
                     try {
-                        const decryptedKey = await decryptVault(vaultData.encryptedVault, password, vaultData.vaultSalt);
-                        sessionStorage.setItem(STORAGE_KEYS.PRIVATE_KEY, JSON.stringify(decryptedKey));
+                        const decryptedJwk = await decryptVault(vaultData.encryptedVault, password, vaultData.vaultSalt);
+                        const importedPriv = await importPrivateKey(decryptedJwk);
+                        cachePrivateKey(importedPriv);
 
                         if (vaultData.publicKey) {
-                            sessionStorage.setItem(STORAGE_KEYS.PUBLIC_KEY, vaultData.publicKey);
+                            try {
+                                const pubJwk = JSON.parse(vaultData.publicKey);
+                                const importedPub = await importPublicKey(pubJwk);
+                                cachePublicKey(importedPub, pubJwk);
+                                // Public key is not sensitive — keeping it in sessionStorage
+                                // lets other tabs/components fetch it without a server roundtrip.
+                                sessionStorage.setItem(STORAGE_KEYS.PUBLIC_KEY, vaultData.publicKey);
+                            } catch {
+                                // Public-key import failure is non-fatal here; createUnion
+                                // and similar flows can re-fetch it on demand.
+                            }
                         }
-                    } catch (decryptionError) {
-                        // Vault decryption failed — could be wrong password or corrupted vault.
-                        // Don't block login: let the server-side auth decide.
-                        // User just won't have E2E keys until they re-register or recover.
-                        console.warn("Vault decryption failed:", decryptionError);
+
+                        // Lazy vault upgrade: re-encrypt as v2 if currently v1.
+                        if (getVaultVersion(vaultData.encryptedVault) === 1) {
+                            try {
+                                const { vault: newVault, salt: newSalt } = await encryptVault(decryptedJwk, password);
+                                await upgradeVaultAction(newVault, newSalt);
+                            } catch {
+                                // Upgrade failure shouldn't block login.
+                            }
+                        }
+                    } catch {
+                        // Vault decryption failed — could be wrong password or corrupted
+                        // vault. Don't block login: server-side auth decides. User will
+                        // hit the unlock prompt and can retry.
                     }
                 }
-            } catch (err) {
+            } catch {
                 // Vault fetch failed silently
             }
         }

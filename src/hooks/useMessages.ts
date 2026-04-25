@@ -116,34 +116,34 @@ export function useMessages(unionId: string | null) {
         }
     }, [unionId, hasMore, loadingMore]);
 
-    // Send Message (Optimistic)
+    // Send Message (Optimistic). Caller must pass a pre-generated message id
+    // so they can bind it into AAD when encrypting (see aad.ts / H3).
     const sendMessage = useCallback(async (
+        id: string,
         ciphertext: string,
         iv: string,
         senderId: string,
-        senderName: string
+        senderName: string,
     ) => {
         if (!unionId) return;
 
-        const tempId = crypto.randomUUID();
-
         const optimisticMsg: MessageData = {
-            id: tempId,
+            id,
             ciphertext,
             iv,
             senderId,
             senderName,
             createdAt: { seconds: Date.now() / 1000 },
-            isOptimistic: true
+            isOptimistic: true,
         };
 
         setMessages(prev => [...prev, optimisticMsg]);
 
         try {
-            const result = await sendMessageAction(unionId, ciphertext, iv, tempId);
+            const result = await sendMessageAction(unionId, ciphertext, iv, id);
             if (result.error) throw new Error(result.error);
         } catch (err) {
-            setMessages(prev => prev.filter(m => m.id !== tempId));
+            setMessages(prev => prev.filter(m => m.id !== id));
             throw err;
         }
     }, [unionId]);

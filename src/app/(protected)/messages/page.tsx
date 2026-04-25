@@ -7,11 +7,12 @@ import { getUserUnions } from "@/lib/client-actions/unions";
 import { useMessages } from "@/hooks/useMessages";
 import { useAllianceMessages } from "@/hooks/useAllianceMessages";
 import { getMyAlliancesAction } from "@/lib/alliance-actions";
-import { importPrivateKey, unwrapKey, encryptContent, decryptContent } from "@/lib/crypto";
+import { unwrapKey, encryptContent, decryptContent } from "@/lib/crypto";
+import { aadFor } from "@/lib/aad";
+import { getMyPrivateKey } from "@/lib/client-crypto";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { STORAGE_KEYS } from "@/lib/constants";
 import type { DecryptedMessage, Channel } from "@/lib/types";
 
 export default function MessagesPage() {
@@ -79,13 +80,12 @@ export default function MessagesPage() {
 
         const decryptKey = async () => {
             try {
-                const privKeyStr = sessionStorage.getItem(STORAGE_KEYS.PRIVATE_KEY);
-                if (!privKeyStr) throw new Error("Private key not found");
-                const privKey = await importPrivateKey(JSON.parse(privKeyStr));
+                const privKey = await getMyPrivateKey();
                 const sharedKey = await unwrapKey(activeChannel.encryptedKey, privKey);
                 setKey(sharedKey);
-            } catch (err) {
-                console.error("Failed to decrypt channel key:", err);
+            } catch {
+                // KeyNotLoadedError or unwrap failure — leave key null. The
+                // unlock gate handles the not-loaded case at the layout level.
                 setKey(null);
             }
         };
@@ -105,8 +105,13 @@ export default function MessagesPage() {
 
         const decryptAll = async () => {
             const decrypted = await Promise.all(rawMessages.map(async (m) => {
+                const aad = activeChannel?.type === 'alliance'
+                    ? aadFor.allianceMessage(activeChannel.id, m.id)
+                    : activeChannel
+                        ? aadFor.message(activeChannel.id, m.id)
+                        : undefined;
                 try {
-                    const text = await decryptContent(m.ciphertext, m.iv, key);
+                    const text = await decryptContent(m.ciphertext, m.iv, key, aad);
                     return { id: m.id, senderId: m.senderId, senderName: m.senderName, createdAt: m.createdAt, isOptimistic: m.isOptimistic, text };
                 } catch {
                     return { id: m.id, senderId: m.senderId, senderName: m.senderName, createdAt: m.createdAt, isOptimistic: m.isOptimistic, text: "Error decrypting" };
@@ -130,8 +135,12 @@ export default function MessagesPage() {
         }
 
         try {
-            const { cipherText, iv } = await encryptContent(textInput, key);
-            await sendMessageFn(cipherText, iv, user.uid, user.displayName || "Unknown");
+            const id = crypto.randomUUID();
+            const aad = activeChannel.type === 'alliance'
+                ? aadFor.allianceMessage(activeChannel.id, id)
+                : aadFor.message(activeChannel.id, id);
+            const { cipherText, iv } = await encryptContent(textInput, key, aad);
+            await sendMessageFn(id, cipherText, iv, user.uid, user.displayName || "Unknown");
             setTextInput("");
         } catch {
             toast.error("Failed to send message");

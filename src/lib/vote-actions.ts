@@ -2,37 +2,60 @@
 
 import { supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@/auth';
-import { validate, createVoteInput, uuid } from '@/lib/validation';
-import { z } from 'zod';
+import { validate, createVoteInput, uuid, encryptedPayload, iv as ivSchema } from '@/lib/validation';
 import { verifyMembership } from '@/lib/auth-helpers';
-import type { VoteData } from '@/lib/types';
+import type { VoteRawData, VoteResponseRaw } from '@/lib/types';
+import { logError } from '@/lib/log';
 
-export async function createVoteAction(unionId: string, title: string, description: string, documentIds: string[] = []) {
+export async function createVoteAction(
+    unionId: string,
+    // Plaintext placeholders visible to the server; real values are in
+    // *_blob/*_iv when the client encrypts them (H4).
+    title: string,
+    description: string,
+    documentIds: string[] = [],
+    id?: string,
+    titleBlob?: string,
+    titleIv?: string,
+    descriptionBlob?: string,
+    descriptionIv?: string,
+) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
     const v = validate(createVoteInput, { unionId, title, description, documentIds });
     if ('error' in v) return { error: v.error };
+    if (id !== undefined) {
+        const idV = validate(uuid, id);
+        if ('error' in idV) return { error: idV.error };
+    }
 
     if (!await verifyMembership(unionId, session.user.id)) {
         return { error: "Not authorized — members only" };
     }
 
+    const insertRow: Record<string, unknown> = {
+        union_id: unionId,
+        created_by: session.user.id,
+        title,
+        description,
+        vote_type: 'yes_no',
+    };
+    if (id) insertRow.id = id;
+    if (titleBlob !== undefined) insertRow.title_blob = titleBlob;
+    if (titleIv !== undefined) insertRow.title_iv = titleIv;
+    if (descriptionBlob !== undefined) insertRow.description_blob = descriptionBlob;
+    if (descriptionIv !== undefined) insertRow.description_iv = descriptionIv;
+
     // 1. Create Vote
     const { data: vote, error } = await supabaseAdmin
         .from('Votes')
-        .insert({
-            union_id: unionId,
-            created_by: session.user.id,
-            title,
-            description,
-            vote_type: 'yes_no'
-        })
+        .insert(insertRow)
         .select()
         .single();
 
     if (error) {
-        console.error("Create Vote Error:", error);
+        logError('createVote failed', error);
         return { error: "Failed to create vote" };
     }
 
@@ -48,7 +71,7 @@ export async function createVoteAction(unionId: string, title: string, descripti
             .insert(attachments);
 
         if (attachError) {
-            console.error("Attachment Error:", attachError);
+            logError('createVote attachments failed', attachError);
             // Non-fatal, return success with warning? Or just log.
         }
     }
@@ -56,7 +79,17 @@ export async function createVoteAction(unionId: string, title: string, descripti
     return { success: true, vote };
 }
 
-export async function getUnionVotesAction(unionId: string): Promise<{ votes?: VoteData[], error?: string }> {
+/**
+ * Fetch votes for a union along with raw (encrypted) response payloads.
+ *
+ * The server no longer aggregates choice counts or surfaces the caller's
+ * vote — those are now derived client-side from the per-row `choice_blob`
+ * after the client decrypts each response with the union AES-GCM key.
+ *
+ * Legacy plaintext rows (created before migration 0011) carry a populated
+ * `choice` column and a NULL blob/iv; the client treats them transparently.
+ */
+export async function getUnionVotesAction(unionId: string): Promise<{ votes?: VoteRawData[], error?: string }> {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
@@ -64,14 +97,13 @@ export async function getUnionVotesAction(unionId: string): Promise<{ votes?: Vo
         return { error: "Not authorized — members only" };
     }
 
-    // 1. Fetch Votes with Attachments and Creator
     const { data: votes, error } = await supabaseAdmin
         .from('Votes')
         .select(`
             *,
             creator:Users!created_by (username),
             attachments:VoteAttachments (
-                document:Documents (id, title)
+                document:Documents (id, title, title_blob, title_iv, union_id)
             )
         `)
         .eq('union_id', unionId)
@@ -81,58 +113,70 @@ export async function getUnionVotesAction(unionId: string): Promise<{ votes?: Vo
 
     const voteIds = votes.map(v => v.id);
 
-    // 2. Fetch All Responses (for aggregation)
-    const { data: allResponses } = await supabaseAdmin
-        .from('VoteResponses')
-        .select('vote_id, choice, user_id')
-        .in('vote_id', voteIds);
+    const { data: allResponses } = voteIds.length > 0
+        ? await supabaseAdmin
+            .from('VoteResponses')
+            .select('vote_id, user_id, choice, choice_blob, iv')
+            .in('vote_id', voteIds)
+        : { data: [] as VoteResponseRaw[] };
 
-    // 3. Aggregate Results & Find My Vote
-    const resultsMap = new Map<string, { yes: number, no: number, abstain: number, total: number }>();
-    const myVoteMap = new Map<string, string>(); // vote_id -> choice
-    const userId = session.user.id;
-
-    votes.forEach(v => {
-        resultsMap.set(v.id, { yes: 0, no: 0, abstain: 0, total: 0 });
+    const responsesByVote = new Map<string, VoteResponseRaw[]>();
+    (allResponses || []).forEach((r: any) => {
+        const list = responsesByVote.get(r.vote_id) || [];
+        list.push({
+            user_id: r.user_id,
+            choice: r.choice ?? null,
+            choice_blob: r.choice_blob ?? null,
+            iv: r.iv ?? null,
+        });
+        responsesByVote.set(r.vote_id, list);
     });
 
-    allResponses?.forEach(r => {
-        // Aggregate
-        const stats = resultsMap.get(r.vote_id);
-        if (stats) {
-            stats.total++;
-            if (r.choice === 'yes') stats.yes++;
-            else if (r.choice === 'no') stats.no++;
-            else if (r.choice === 'abstain') stats.abstain++;
-        }
-
-        // Check if it's my vote
-        if (r.user_id === userId) {
-            myVoteMap.set(r.vote_id, r.choice);
-        }
-    });
-
-    // 4. Combine
-    const finalVotes: VoteData[] = votes.map(v => ({
-        ...v,
-        created_by_name: (v as any).creator?.username || 'Unknown',
-        my_vote: myVoteMap.get(v.id),
-        results: resultsMap.get(v.id) || { yes: 0, no: 0, abstain: 0, total: 0 },
-        // @ts-ignore
-        attached_documents: v.attachments?.map((a: any) => a.document) || []
+    const finalVotes: VoteRawData[] = votes.map((v: any) => ({
+        id: v.id,
+        union_id: v.union_id,
+        title: v.title,
+        title_blob: v.title_blob ?? null,
+        title_iv: v.title_iv ?? null,
+        description: v.description,
+        description_blob: v.description_blob ?? null,
+        description_iv: v.description_iv ?? null,
+        status: v.status,
+        vote_type: v.vote_type,
+        created_at: v.created_at,
+        created_by: v.created_by,
+        created_by_name: v.creator?.username || 'Unknown',
+        attached_documents: (v.attachments || [])
+            .map((a: any) => a.document)
+            .filter(Boolean)
+            .map((d: any) => ({
+                id: d.id,
+                title: d.title,
+                title_blob: d.title_blob ?? null,
+                title_iv: d.title_iv ?? null,
+                union_id: d.union_id,
+            })),
+        responses: responsesByVote.get(v.id) || [],
     }));
 
     return { votes: finalVotes };
 }
 
-export async function castVoteAction(voteId: string, choice: 'yes' | 'no' | 'abstain') {
+/**
+ * Cast an encrypted vote. The plaintext choice never reaches the server;
+ * the client passes a ciphertext + IV produced by encrypting the choice
+ * with the union's AES-GCM key.
+ */
+export async function castVoteAction(voteId: string, choiceBlob: string, iv: string) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
     const vv = validate(uuid, voteId);
     if ('error' in vv) return { error: vv.error };
-    const cv = validate(z.enum(['yes', 'no', 'abstain']), choice);
-    if ('error' in cv) return { error: cv.error };
+    const bv = validate(encryptedPayload, choiceBlob);
+    if ('error' in bv) return { error: bv.error };
+    const iv2 = validate(ivSchema, iv);
+    if ('error' in iv2) return { error: iv2.error };
 
     // Verify membership via the vote's union
     const { data: vote } = await supabaseAdmin
@@ -151,10 +195,10 @@ export async function castVoteAction(voteId: string, choice: 'yes' | 'no' | 'abs
     // Check if already voted
     const { data: existing } = await supabaseAdmin
         .from('VoteResponses')
-        .select('id')
+        .select('user_id')
         .eq('vote_id', voteId)
         .eq('user_id', session.user.id)
-        .single();
+        .maybeSingle();
 
     if (existing) return { error: "Already voted" };
 
@@ -163,11 +207,14 @@ export async function castVoteAction(voteId: string, choice: 'yes' | 'no' | 'abs
         .insert({
             vote_id: voteId,
             user_id: session.user.id,
-            choice
+            // `choice` left NULL: the encrypted blob is the source of truth.
+            choice: null,
+            choice_blob: choiceBlob,
+            iv,
         });
 
     if (error) {
-        console.error("Cast Vote Error:", error);
+        logError('castVote failed', error);
         return { error: "Failed to cast vote" };
     }
     return { success: true };
@@ -200,7 +247,7 @@ export async function closeVoteAction(voteId: string) {
         .eq('id', voteId);
 
     if (error) {
-        console.error("Close Vote Error:", error);
+        logError('closeVote failed', error);
         return { error: "Failed to close vote" };
     }
     return { success: true };

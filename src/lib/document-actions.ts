@@ -6,32 +6,52 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { validate, createDocumentInput, updateDocumentInput, uuid } from '@/lib/validation';
 import { verifyMembership } from '@/lib/auth-helpers';
 import type { Document } from '@/lib/types';
+import { logError } from '@/lib/log';
 
-export async function createDocumentAction(unionId: string, title: string, contentBlob: string = '', iv: string = '') {
+export async function createDocumentAction(
+    unionId: string,
+    // Plaintext placeholder visible to server (e.g. "Encrypted Document").
+    // The real title lives in titleBlob/titleIv if provided.
+    title: string,
+    contentBlob: string = '',
+    iv: string = '',
+    id?: string,
+    titleBlob?: string,
+    titleIv?: string,
+) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
     const v = validate(createDocumentInput, { unionId, title, contentBlob, iv });
     if ('error' in v) return { error: v.error };
+    if (id !== undefined) {
+        const idV = validate(uuid, id);
+        if ('error' in idV) return { error: idV.error };
+    }
 
     if (!await verifyMembership(unionId, session.user.id)) {
         return { error: "Not authorized — members only" };
     }
 
+    const insertRow: Record<string, unknown> = {
+        union_id: unionId,
+        created_by: session.user.id,
+        title,
+        content_blob: contentBlob,
+        iv,
+    };
+    if (id) insertRow.id = id;
+    if (titleBlob !== undefined) insertRow.title_blob = titleBlob;
+    if (titleIv !== undefined) insertRow.title_iv = titleIv;
+
     const { data, error } = await supabaseAdmin
         .from('Documents')
-        .insert({
-            union_id: unionId,
-            created_by: session.user.id,
-            title,
-            content_blob: contentBlob,
-            iv
-        })
+        .insert(insertRow)
         .select()
         .single();
 
     if (error) {
-        console.error("Document insert error:", error);
+        logError('createDocument failed', error);
         return { error: "Failed to create document" };
     }
     return { success: true, document: data };
@@ -163,12 +183,12 @@ export async function formalizeDocumentAction(markdownContent: string): Promise<
         const response = result.response;
         const text = response.text();
         if (!text) {
-            console.error("Formalize: empty response from Gemini. Finish reason:", response.candidates?.[0]?.finishReason);
+            logError('formalize: empty Gemini response');
             return { error: "Gemini returned an empty response — the content may have been blocked by safety filters." };
         }
         return { draft: text };
     } catch (err) {
-        console.error("Formalize error:", err instanceof Error ? err.message : err);
+        logError('formalize: Gemini call failed', err);
         return { error: "Failed to formalize document" };
     }
 }

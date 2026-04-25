@@ -68,7 +68,7 @@ export default function DocumentEditorPage({ params }: { params: Promise<{ id: s
             return;
         }
         setSaving(true);
-        const result = await updateEncryptedDocument(docId, content, encKey);
+        const result = await updateEncryptedDocument(docId, content, encKey, doc.union_id);
         if (result.error) toast.error(result.error);
         setSaving(false);
     };

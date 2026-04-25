@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { useUnion } from "@/context/UnionContext";
 import { getDashboardStatsAction } from "@/lib/union-actions";
+import { decryptContent } from "@/lib/crypto";
+import { aadFor } from "@/lib/aad";
+import { getUnionKey } from "@/lib/client-crypto";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Vote, FileText, Users, MessageSquare, ArrowRight, Loader2, Plus } from "lucide-react";
@@ -29,7 +32,29 @@ export default function DashboardPage() {
     if (!activeUnion) return;
     setLoading(true);
     const { stats } = await getDashboardStatsAction(activeUnion.id);
-    if (stats) setStats(stats);
+    if (!stats) {
+      setLoading(false);
+      return;
+    }
+
+    // Decrypt document titles client-side (H4). Falls back to plaintext for
+    // legacy rows or when the union key is unavailable.
+    let unionKey: CryptoKey | null = null;
+    try { unionKey = await getUnionKey(activeUnion.encryptionKey); } catch { unionKey = null; }
+
+    const recentDocs = await Promise.all(
+      (stats.recentDocs as Array<{ id: string; title: string; title_blob?: string | null; title_iv?: string | null; union_id?: string; updated_at: string }>).map(async (d) => {
+        let title = d.title;
+        if (unionKey && d.title_blob && d.title_iv && d.union_id) {
+          try {
+            title = await decryptContent(d.title_blob, d.title_iv, unionKey, aadFor.documentTitle(d.union_id, d.id));
+          } catch { /* keep placeholder */ }
+        }
+        return { id: d.id, title, updated_at: d.updated_at };
+      })
+    );
+
+    setStats({ ...stats, recentDocs });
     setLoading(false);
   };
 

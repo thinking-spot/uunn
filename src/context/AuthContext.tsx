@@ -4,6 +4,7 @@ import { createContext, useContext } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { STORAGE_KEYS } from "@/lib/constants";
+import { clearKeys } from "@/lib/key-store";
 
 // Define a minimal User type compatible with what we expect
 interface User {
@@ -34,7 +35,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } : null;
 
     const logout = async () => {
-        // Clear cryptographic keys from session storage
+        // Clear in-memory keys and any legacy sessionStorage residue.
+        clearKeys();
         sessionStorage.removeItem(STORAGE_KEYS.PRIVATE_KEY);
         sessionStorage.removeItem(STORAGE_KEYS.PUBLIC_KEY);
         await signOut({ redirect: false });

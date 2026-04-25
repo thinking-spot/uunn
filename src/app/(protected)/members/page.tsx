@@ -8,6 +8,7 @@ import { Users, UserPlus, Copy, Link as LinkIcon } from "lucide-react";
 import { useState, useEffect } from "react";
 import { getPendingJoinRequestsAction, respondToJoinRequestAction, getUnionMembersAction, promoteMemberAction } from "@/lib/union-actions";
 import { removeMemberAndRotateKey, createSecureInvite } from "@/lib/client-actions/unions";
+import { fingerprintFromJson } from "@/lib/key-fingerprint";
 import { useUnion } from "@/context/UnionContext";
 import { useAuth } from "@/context/AuthContext";
 import { Check, X, ShieldAlert, ShieldPlus, UserMinus, Loader2 } from "lucide-react";
@@ -37,7 +38,18 @@ export default function MembersPage() {
         if (!activeUnion) return;
         setMembersLoading(true);
         const result = await getUnionMembersAction(activeUnion.id);
-        if (result.members) setMembers(result.members);
+        if (result.members) {
+            // Compute key fingerprints client-side (H8). Done here rather
+            // than on the server so admins can verify the value locally
+            // against an out-of-band channel without trusting the server.
+            const withFingerprints = await Promise.all(
+                result.members.map(async (m: any) => ({
+                    ...m,
+                    fingerprint: await fingerprintFromJson(m.publicKey),
+                }))
+            );
+            setMembers(withFingerprints);
+        }
         setMembersLoading(false);
     };
 
@@ -138,7 +150,8 @@ export default function MembersPage() {
                     </div>
                 </div>
 
-                {/* Invite Section */}
+                {/* Invite Section — admin-only (invite code grants key escrow access) */}
+                {isAdmin && activeUnion.inviteCode && (
                 <Card className="mb-8 border-primary/20">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-lg">
@@ -171,6 +184,7 @@ export default function MembersPage() {
                         )}
                     </CardContent>
                 </Card>
+                )}
 
                 <Tabs defaultValue="list" className="w-full">
                     <TabsList className="mb-6">
@@ -225,6 +239,14 @@ export default function MembersPage() {
                                                             <div>
                                                                 <span className="font-medium">{member.username}</span>
                                                                 {isSelf && <span className="text-xs text-muted-foreground ml-1">(you)</span>}
+                                                                {member.fingerprint && (
+                                                                    <div
+                                                                        className="text-[10px] font-mono text-muted-foreground mt-0.5"
+                                                                        title="Key fingerprint — verify out-of-band with this member to confirm no MITM."
+                                                                    >
+                                                                        🔑 {member.fingerprint}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </td>
