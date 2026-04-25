@@ -22,13 +22,17 @@ const { auth } = NextAuth(authConfig);
  * follow-up. The other H1-adjacent gains (COOP, CORP, object-src 'none',
  * upgrade-insecure-requests, drop X-XSS-Protection) are kept.
  */
-function buildCsp(isDev: boolean): string {
+function buildCsp(_isDev: boolean): string {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    // 'unsafe-eval' matches the policy that was in place before the audit.
+    // Some libraries (Sentry integrations, certain bundle paths) use eval at
+    // runtime; dropping it caused enough uncertainty that we keep parity with
+    // pre-audit behavior here. Removing 'unsafe-eval' belongs in the same
+    // follow-up PR that introduces strict nonces (deferred H1).
     const scriptSrc = [
         "'self'",
         "'unsafe-inline'",
-        // Dev needs eval for Turbopack HMR; production drops it.
-        ...(isDev ? ["'unsafe-eval'"] : []),
+        "'unsafe-eval'",
     ].join(' ');
 
     return [
