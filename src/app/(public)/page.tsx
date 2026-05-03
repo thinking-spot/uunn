@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { Shield, Users, FileText, Lock, Eye, Code, ArrowRight } from "lucide-react";
+import { ContactForm } from "@/components/ContactForm";
 
 export const metadata: Metadata = {
     title: "Start a Union | A Free, Secure App",
@@ -194,6 +195,19 @@ export default function LandingPage() {
                                 Get Started — It&apos;s Free
                             </Link>
                         </div>
+                    </div>
+                </section>
+
+                {/* Contact */}
+                <section className="w-full py-12 md:py-24 lg:py-32 bg-muted/50">
+                    <div className="container px-4 md:px-6">
+                        <div className="flex flex-col items-center space-y-4 text-center mb-8">
+                            <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl">Message <span className="text-primary">uunn</span></h2>
+                            <p className="mx-auto max-w-[600px] text-gray-500 dark:text-gray-400">
+                                Share feedback, ask questions, and access open source code.
+                            </p>
+                        </div>
+                        <ContactForm />
                     </div>
                 </section>
             </main>
