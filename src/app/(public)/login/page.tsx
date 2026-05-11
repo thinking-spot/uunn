@@ -299,9 +299,15 @@ function LoginForm() {
                         {isRegistering ? 'Create Account' : 'Welcome Back'}
                     </CardTitle>
                     <CardDescription className="text-center">
-                        {isRegistering
-                            ? 'Enter a username and password to join anonymously.'
-                            : 'Enter your credentials to access your union.'}
+                        {isRegistering ? (
+                            <>
+                                Enter a username and password to join anonymously.
+                                <br />
+                                Avoid company devices and Wi-Fi when organizing.
+                            </>
+                        ) : (
+                            'Enter your credentials to access your union.'
+                        )}
                     </CardDescription>
                 </CardHeader>
                 <form onSubmit={isRegistering ? handleSignupContinue : handleLoginSubmit}>
@@ -374,7 +380,7 @@ function LoginForm() {
                             />
                             {isRegistering && (
                                 <p className="text-xs text-muted-foreground">
-                                    At least 12 characters. uunn never sees this — losing it locks you out unless you have your recovery key.
+                                    At least 12 characters.
                                 </p>
                             )}
                         </div>
