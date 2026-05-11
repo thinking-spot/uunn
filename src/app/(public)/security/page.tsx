@@ -70,16 +70,18 @@ export default function SecurityPage() {
                     </p>
                     <h3 className="font-semibold mt-4 mb-2">What we protect against:</h3>
                     <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
-                        <li>Employer surveillance of network traffic.</li>
                         <li>Database leaks or breaches.</li>
                         <li>Subpoenas for message content (we don&apos;t have it).</li>
-                        <li>Man-in-the-middle attacks (HSTS enforced, TLS required).</li>
+                        <li>Passive network observers and on-path attackers on networks where you trust the certificate authorities (HSTS enforced, TLS required).</li>
                     </ul>
                     <h3 className="font-semibold mt-4 mb-2">Limitations:</h3>
                     <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
                         <li>We cannot protect against a compromised device (e.g., keyloggers, screen capture).</li>
+                        <li>
+                            <strong>Managed work devices and company networks.</strong> Many employers install a corporate root certificate on managed devices and route traffic through a TLS-inspecting proxy. In that setup, the proxy can intercept and even modify the JavaScript uunn ships to your browser — bypassing client-side encryption entirely. HSTS does not prevent this, because the proxy presents a certificate that chains to a root the device already trusts. <strong>Do not use a work device or a company network for organizing.</strong> Use a personal phone or laptop on cellular data or a non-work Wi-Fi.
+                        </li>
                         <li>Metadata (who is in which union, message timestamps) is visible to the server, though not to external observers.</li>
-                        <li>If you lose your password and private key, your data cannot be recovered.</li>
+                        <li>If you lose your password and your recovery key, your data cannot be recovered.</li>
                     </ul>
                 </section>
 
@@ -104,7 +106,7 @@ export default function SecurityPage() {
                     <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
                         <li>Use a strong, unique password.</li>
                         <li>Use a pseudonym that doesn&apos;t identify you (e.g., &quot;Blue Jay&quot; not &quot;John Smith&quot;).</li>
-                        <li>Do not use work devices or work WiFi networks if possible.</li>
+                        <li>Do not organize on a work device or a company network — they can defeat the encryption. Use a personal device on cellular data or a non-work Wi-Fi.</li>
                         <li>Verify invite codes with your coworkers in person.</li>
                         <li>Log out when you&apos;re done — this clears your private key from the browser.</li>
                     </ul>
