@@ -51,7 +51,6 @@ function LoginForm() {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-    const [notificationEmail, setNotificationEmail] = useState('');
     const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
     const [isPending, setIsPending] = useState(false);
 
@@ -132,10 +131,6 @@ function LoginForm() {
         // Light client-side validation before doing heavy crypto.
         if (username.trim().length < 3) { setErrorMessage('Username must be at least 3 characters.'); return; }
         if (password.length < 12) { setErrorMessage('Password must be at least 12 characters.'); return; }
-        if (notificationEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail.trim())) {
-            setErrorMessage('That email doesn\'t look quite right.');
-            return;
-        }
         setIsPending(true);
         const b = await buildSignupBundle();
         setIsPending(false);
@@ -168,9 +163,6 @@ function LoginForm() {
             formData.append('recoverySalt', bundle.recoverySalt);
             formData.append('recoveryDigest', bundle.recoveryDigest);
             formData.append('encryptedRecoveryKey', bundle.encryptedRecoveryKey);
-            if (notificationEmail.trim()) {
-                formData.append('notificationEmail', notificationEmail.trim());
-            }
 
             const result = await register(undefined, formData);
             if (result) {
@@ -386,26 +378,6 @@ function LoginForm() {
                                 </p>
                             )}
                         </div>
-                        {isRegistering && (
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium leading-none" htmlFor="notif-email">
-                                    Notification email <span className="text-muted-foreground font-normal">(optional)</span>
-                                </label>
-                                <input
-                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    id="notif-email"
-                                    type="email"
-                                    name="notificationEmail"
-                                    autoComplete="email"
-                                    placeholder="anon@anonaddy.me"
-                                    value={notificationEmail}
-                                    onChange={(e) => setNotificationEmail(e.target.value)}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Used only to notify you of account events. <strong>Not used to recover your account</strong> — your recovery key does that. For privacy, consider an anonymous email like Proton Mail or Apple Hide My Email.
-                                </p>
-                            </div>
-                        )}
                         <div className="flex h-8 items-end space-x-1" aria-live="polite" aria-atomic="true">
                             {errorMessage && (
                                 <p className="text-sm text-destructive font-medium">{errorMessage}</p>
