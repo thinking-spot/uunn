@@ -12,9 +12,10 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 
-import { Loader2, Save, User, Settings, Trash2 } from "lucide-react";
+import { Loader2, Save, User, Settings, Trash2, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { STORAGE_KEYS } from "@/lib/constants";
+import { RecoverySettings } from "@/components/RecoverySettings";
 
 // --- Profile Settings Tab ---
 function ProfileSettings() {
@@ -26,6 +27,7 @@ function ProfileSettings() {
     const [role, setRole] = useState("");
     const [location, setLocation] = useState("");
     const [preferredContact, setPreferredContact] = useState("");
+    const [notificationEmail, setNotificationEmail] = useState("");
 
     const [loading, setLoading] = useState(false);
     const [initLoading, setInitLoading] = useState(true);
@@ -39,6 +41,7 @@ function ProfileSettings() {
                 setJoinedAt(new Date(result.profile.created_at).toLocaleDateString());
                 setLocation(result.profile.location || "");
                 setPreferredContact(result.profile.preferred_contact || "");
+                setNotificationEmail(result.profile.notification_email || "");
             }
             setInitLoading(false);
         });
@@ -51,7 +54,7 @@ function ProfileSettings() {
     const handleSave = async () => {
         setLoading(true);
         try {
-            const result = await updateUserProfileAction(location, preferredContact);
+            const result = await updateUserProfileAction(location, preferredContact, notificationEmail);
             if (result.error) {
                 toast.error(result.error);
             } else {
@@ -131,6 +134,22 @@ function ProfileSettings() {
                                 onChange={e => setPreferredContact(e.target.value)}
                             />
                             <p className="text-xs text-muted-foreground">Optional. How other union members can reach you.</p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Notification Email</label>
+                            <input
+                                className="w-full p-2 border rounded"
+                                type="email"
+                                placeholder="anon@anonaddy.me"
+                                value={notificationEmail}
+                                onChange={e => setNotificationEmail(e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Optional. Used only for account-event notifications.
+                                <strong> Not used for password recovery</strong> — your recovery key does that.
+                                Consider an anonymous email like Proton Mail or Apple Hide My Email.
+                            </p>
                         </div>
                     </>
                 )}
@@ -296,6 +315,31 @@ function UnionSettings() {
     );
 }
 
+// --- Recovery Tab Wrapper ---
+function RecoveryTab() {
+    const [recoverySetUp, setRecoverySetUp] = useState<boolean | null>(null);
+
+    const refresh = () => {
+        getUserProfileAction().then(r => {
+            if (r.profile) setRecoverySetUp(Boolean(r.profile.recovery_set_up));
+        });
+    };
+
+    useEffect(() => { refresh(); }, []);
+
+    if (recoverySetUp === null) {
+        return (
+            <Card>
+                <CardContent className="flex justify-center p-8">
+                    <Loader2 className="animate-spin" />
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return <RecoverySettings recoverySetUp={recoverySetUp} onRecoveryChanged={refresh} />;
+}
+
 // --- Settings Page ---
 export default function SettingsPage() {
     return (
@@ -308,6 +352,10 @@ export default function SettingsPage() {
                         <User className="mr-2 h-4 w-4" />
                         Profile
                     </TabsTrigger>
+                    <TabsTrigger value="recovery">
+                        <KeyRound className="mr-2 h-4 w-4" />
+                        Recovery
+                    </TabsTrigger>
                     <TabsTrigger value="union">
                         <Settings className="mr-2 h-4 w-4" />
                         Union
@@ -316,6 +364,10 @@ export default function SettingsPage() {
 
                 <TabsContent value="profile">
                     <ProfileSettings />
+                </TabsContent>
+
+                <TabsContent value="recovery">
+                    <RecoveryTab />
                 </TabsContent>
 
                 <TabsContent value="union">

@@ -319,6 +319,103 @@ describe('Public Key Fingerprint (H8)', () => {
   });
 });
 
+describe('Recovery Mnemonic (BIP-39)', () => {
+  it('generates a 24-word English mnemonic', async () => {
+    const { generateRecoveryMnemonic, isValidRecoveryMnemonic } = await getCrypto();
+    const m = generateRecoveryMnemonic();
+    expect(m.split(/\s+/).length).toBe(24);
+    expect(isValidRecoveryMnemonic(m)).toBe(true);
+  });
+
+  it('normalizes case and whitespace without changing meaning', async () => {
+    const { generateRecoveryMnemonic, normalizeMnemonic, isValidRecoveryMnemonic } = await getCrypto();
+    const m = generateRecoveryMnemonic();
+    const messy = '  ' + m.toUpperCase().replace(/ /g, '   ') + ' \n';
+    expect(normalizeMnemonic(messy)).toBe(m);
+    expect(isValidRecoveryMnemonic(messy)).toBe(true);
+  });
+
+  it('rejects garbage and bad-checksum mnemonics', async () => {
+    const { isValidRecoveryMnemonic } = await getCrypto();
+    expect(isValidRecoveryMnemonic('not a valid mnemonic at all')).toBe(false);
+    // 24 valid-looking words but random order — checksum will not match.
+    const fake = ('abandon '.repeat(24)).trim();
+    expect(isValidRecoveryMnemonic(fake)).toBe(false);
+  });
+
+  it('round-trips a vault encrypted under the mnemonic', async () => {
+    const { generateUserKeyPair, exportKey, generateRecoveryMnemonic, encryptVaultWithMnemonic, decryptVaultWithMnemonic } = await getCrypto();
+    const keyPair = await generateUserKeyPair();
+    const jwk = await exportKey(keyPair.privateKey);
+    const m = generateRecoveryMnemonic();
+
+    const { vault, salt } = await encryptVaultWithMnemonic(jwk, m);
+    const recovered = await decryptVaultWithMnemonic(vault, m, salt);
+    expect(recovered.kty).toBe(jwk.kty);
+    expect(recovered.d).toBe(jwk.d);
+  });
+
+  it('decrypts the recovery vault even when the mnemonic is supplied with different casing', async () => {
+    const { generateUserKeyPair, exportKey, generateRecoveryMnemonic, encryptVaultWithMnemonic, decryptVaultWithMnemonic } = await getCrypto();
+    const keyPair = await generateUserKeyPair();
+    const jwk = await exportKey(keyPair.privateKey);
+    const m = generateRecoveryMnemonic();
+
+    const { vault, salt } = await encryptVaultWithMnemonic(jwk, m);
+    const recovered = await decryptVaultWithMnemonic(vault, '  ' + m.toUpperCase() + '  ', salt);
+    expect(recovered.d).toBe(jwk.d);
+  });
+
+  it('fails to decrypt the recovery vault with the wrong mnemonic', async () => {
+    const { generateUserKeyPair, exportKey, generateRecoveryMnemonic, encryptVaultWithMnemonic, decryptVaultWithMnemonic } = await getCrypto();
+    const keyPair = await generateUserKeyPair();
+    const jwk = await exportKey(keyPair.privateKey);
+
+    const correct = generateRecoveryMnemonic();
+    const wrong = generateRecoveryMnemonic();
+    const { vault, salt } = await encryptVaultWithMnemonic(jwk, correct);
+    await expect(decryptVaultWithMnemonic(vault, wrong, salt)).rejects.toThrow();
+  });
+
+  it('round-trips the password-wrapped recovery key blob', async () => {
+    const { generateRecoveryMnemonic, encryptRecoveryKeyForStorage, decryptRecoveryKeyFromStorage, encryptVault, exportKey, generateUserKeyPair } = await getCrypto();
+    const m = generateRecoveryMnemonic();
+    const password = 'a-secure-password-1234';
+
+    // Use the vault salt the way the app would
+    const keyPair = await generateUserKeyPair();
+    const jwk = await exportKey(keyPair.privateKey);
+    const { salt: vaultSalt } = await encryptVault(jwk, password);
+
+    const blob = await encryptRecoveryKeyForStorage(m, password, vaultSalt);
+    const recovered = await decryptRecoveryKeyFromStorage(blob, password, vaultSalt);
+    expect(recovered).toBe(m);
+  });
+
+  it('fails to decrypt the recovery-key blob with the wrong password', async () => {
+    const { generateRecoveryMnemonic, encryptRecoveryKeyForStorage, decryptRecoveryKeyFromStorage, encryptVault, exportKey, generateUserKeyPair } = await getCrypto();
+    const m = generateRecoveryMnemonic();
+
+    const keyPair = await generateUserKeyPair();
+    const jwk = await exportKey(keyPair.privateKey);
+    const { salt: vaultSalt } = await encryptVault(jwk, 'pw-correct');
+
+    const blob = await encryptRecoveryKeyForStorage(m, 'pw-correct', vaultSalt);
+    await expect(decryptRecoveryKeyFromStorage(blob, 'pw-wrong', vaultSalt)).rejects.toThrow();
+  });
+
+  it('produces a deterministic SHA-256 digest of the mnemonic for bcrypt input', async () => {
+    const { generateRecoveryMnemonic, recoveryMnemonicDigest } = await getCrypto();
+    const m = generateRecoveryMnemonic();
+    const d1 = await recoveryMnemonicDigest(m);
+    const d2 = await recoveryMnemonicDigest('  ' + m.toUpperCase() + '  ');
+    expect(d1).toBe(d2);
+    // Different mnemonic → different digest.
+    const other = generateRecoveryMnemonic();
+    expect(await recoveryMnemonicDigest(other)).not.toBe(d1);
+  });
+});
+
 describe('Invite Code Key Escrow', () => {
   it('encrypts and decrypts a key with invite code', async () => {
     const { generateUnionKey, encryptKeyWithCode, decryptKeyWithCode, encryptContent, decryptContent } = await getCrypto();

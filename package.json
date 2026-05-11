@@ -8,11 +8,13 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "contact:fetch": "node --env-file=.env.local scripts/fetch-contact-messages.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@radix-ui/react-slot": "^1.2.4",
+    "@scure/bip39": "^2.2.0",
     "@sentry/nextjs": "^10.47.0",
     "@supabase/supabase-js": "^2.90.1",
     "@types/bcryptjs": "^2.4.6",

@@ -7,6 +7,7 @@ import { BottomNav } from "@/components/layout/BottomNav";
 import { Sheet } from "@/components/ui/simple-sheet";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { UnlockGate } from "@/components/UnlockGate";
+import { RecoverySetupBanner } from "@/components/RecoverySetupBanner";
 
 export default function ProtectedLayout({
     children,
@@ -29,6 +30,7 @@ export default function ProtectedLayout({
 
                     <div className="flex-1 flex flex-col h-full overflow-hidden">
                         <TopBar onMenuClick={() => setMobileMenuOpen(true)} />
+                        <RecoverySetupBanner />
                         {/* Add bottom padding for BottomNav on mobile */}
                         <main className="flex-1 overflow-y-auto bg-secondary/10 pb-16 md:pb-0">
                             {children}

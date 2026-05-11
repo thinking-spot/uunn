@@ -1,4 +1,6 @@
 // Client-side Cryptography Utilities using Web Crypto API
+import * as bip39 from '@scure/bip39';
+import { wordlist as englishWordlist } from '@scure/bip39/wordlists/english.js';
 
 // 1. Key Generation (RSA-OAEP for Key Exchange)
 // Each user has a Key Pair. Public key is on server, Private key is local.
@@ -378,6 +380,170 @@ export async function decryptKeyWithCode(
         true,
         ["encrypt", "decrypt"]
     );
+}
+
+// 10. Account Recovery (BIP-39 Mnemonic)
+//
+// The recovery key is a 24-word BIP-39 English mnemonic (256-bit entropy).
+// At signup we encrypt the user's private RSA JWK a second time under a key
+// derived from the mnemonic (PBKDF2 600,000 iter, SHA-256). The mnemonic
+// itself is never stored on the server — only its bcrypt hash (for proof
+// during reset) and a copy encrypted under the user's password-derived key
+// (so settings can display it after password re-entry).
+//
+// This is independent of the password vault: rotating the password does not
+// invalidate the recovery vault, and rotating the recovery key does not
+// invalidate the password vault.
+//
+// Format of the recovery vault and recovery_salt is identical to the password
+// vault — same v2 envelope, same PBKDF2 parameters — but the password input
+// is the normalized mnemonic instead of the user password.
+//
+// Format of `encrypted_recovery_key`:
+//   base64(JSON { v: 1, iv: base64, ct: base64 })
+// where ct = AES-GCM(normalized_mnemonic, PBKDF2(password, vault_salt)).
+
+interface EncryptedRecoveryKeyEnvelope {
+    v: 1;
+    iv: string;
+    ct: string;
+}
+
+/**
+ * Generate a fresh recovery mnemonic. 256 bits of entropy ⇒ 24 words from
+ * the English BIP-39 wordlist. Caller is responsible for displaying this to
+ * the user; it must NEVER be transmitted to the server in plaintext form
+ * after signup or recovery completes.
+ */
+export function generateRecoveryMnemonic(): string {
+    return bip39.generateMnemonic(englishWordlist, 256);
+}
+
+/**
+ * Normalize a mnemonic for hashing/encryption: lowercase, trim, single-space
+ * separated. Users may write it down with extra spaces or different casing;
+ * normalization makes those equivalent.
+ */
+export function normalizeMnemonic(mnemonic: string): string {
+    return mnemonic
+        .normalize('NFKD')
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .join(' ');
+}
+
+/**
+ * Validate that the input is a well-formed BIP-39 English mnemonic, after
+ * normalization. Returns false for garbage, wrong word count, or bad checksum.
+ */
+export function isValidRecoveryMnemonic(mnemonic: string): boolean {
+    try {
+        return bip39.validateMnemonic(normalizeMnemonic(mnemonic), englishWordlist);
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Encrypt a private RSA JWK under a recovery mnemonic. Output shape matches
+ * encryptVault (v2 envelope + base64 salt) so the same decryption path works.
+ */
+export async function encryptVaultWithMnemonic(
+    privateKeyJwk: JsonWebKey,
+    mnemonic: string,
+): Promise<{ vault: string; salt: string }> {
+    return encryptVault(privateKeyJwk, normalizeMnemonic(mnemonic));
+}
+
+/**
+ * Decrypt a recovery vault using the mnemonic. Throws on invalid mnemonic
+ * (after normalization) or corrupted vault.
+ */
+export async function decryptVaultWithMnemonic(
+    vaultBase64: string,
+    mnemonic: string,
+    saltBase64: string,
+): Promise<JsonWebKey> {
+    return decryptVault(vaultBase64, normalizeMnemonic(mnemonic), saltBase64);
+}
+
+/**
+ * Encrypt the mnemonic under the user's password-derived key, reusing the
+ * vault salt. Lets the settings page reveal the recovery key after the user
+ * proves password knowledge again. Uses a fresh IV so it never collides with
+ * the vault's ciphertext (which uses the same key with a different IV).
+ */
+export async function encryptRecoveryKeyForStorage(
+    mnemonic: string,
+    password: string,
+    vaultSaltBase64: string,
+): Promise<string> {
+    const salt = new Uint8Array(base64ToArrayBuffer(vaultSaltBase64));
+    const key = await deriveKeyFromPassword(password, salt, PBKDF2_ITER_V2);
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const data = new TextEncoder().encode(normalizeMnemonic(mnemonic));
+
+    const ct = await window.crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv as BufferSource },
+        key,
+        data,
+    );
+
+    const envelope: EncryptedRecoveryKeyEnvelope = {
+        v: 1,
+        iv: arrayBufferToBase64(iv.buffer as ArrayBuffer),
+        ct: arrayBufferToBase64(ct),
+    };
+    return window.btoa(JSON.stringify(envelope));
+}
+
+/**
+ * Decrypt the password-wrapped mnemonic for display in settings.
+ */
+export async function decryptRecoveryKeyFromStorage(
+    blob: string,
+    password: string,
+    vaultSaltBase64: string,
+): Promise<string> {
+    let envelope: EncryptedRecoveryKeyEnvelope;
+    try {
+        const parsed = JSON.parse(window.atob(blob));
+        if (!parsed || parsed.v !== 1) {
+            throw new Error('Unknown envelope version');
+        }
+        envelope = parsed as EncryptedRecoveryKeyEnvelope;
+    } catch {
+        throw new Error('Corrupted recovery key blob');
+    }
+
+    const salt = new Uint8Array(base64ToArrayBuffer(vaultSaltBase64));
+    const key = await deriveKeyFromPassword(password, salt, PBKDF2_ITER_V2);
+    const iv = new Uint8Array(base64ToArrayBuffer(envelope.iv));
+    const ct = new Uint8Array(base64ToArrayBuffer(envelope.ct));
+
+    try {
+        const buf = await window.crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: iv as BufferSource },
+            key,
+            ct as BufferSource,
+        );
+        return new TextDecoder().decode(buf);
+    } catch {
+        throw new Error('Invalid password or corrupted recovery key blob');
+    }
+}
+
+/**
+ * Pre-hash the mnemonic to a fixed-size digest before bcrypt, since bcrypt
+ * truncates inputs at 72 bytes and a 24-word mnemonic exceeds that. The
+ * digest is unsalted (the mnemonic itself is high-entropy and unique per
+ * account; bcrypt's own salt prevents rainbow tables).
+ */
+export async function recoveryMnemonicDigest(mnemonic: string): Promise<string> {
+    const data = new TextEncoder().encode(normalizeMnemonic(mnemonic));
+    const buf = await window.crypto.subtle.digest('SHA-256', data as BufferSource);
+    return arrayBufferToBase64(buf);
 }
 
 export async function decryptVault(vaultBase64: string, password: string, saltBase64: string): Promise<JsonWebKey> {

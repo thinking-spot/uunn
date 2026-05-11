@@ -86,6 +86,11 @@ export async function register(
     const publicKey = formData.get('publicKey') as string;
     const encryptedVault = formData.get('encryptedVault') as string;
     const vaultSalt = formData.get('vaultSalt') as string;
+    const recoveryVault = (formData.get('recoveryVault') as string) || '';
+    const recoverySalt = (formData.get('recoverySalt') as string) || '';
+    const recoveryDigest = (formData.get('recoveryDigest') as string) || '';
+    const encryptedRecoveryKey = (formData.get('encryptedRecoveryKey') as string) || '';
+    const notificationEmailRaw = (formData.get('notificationEmail') as string) || '';
 
     // Validate cryptographic material
     if (publicKey) {
@@ -100,6 +105,31 @@ export async function register(
     }
     if (encryptedVault && encryptedVault.length > 50_000) return 'Vault data too large.';
     if (vaultSalt && vaultSalt.length > 200) return 'Vault salt too large.';
+    if (recoveryVault && recoveryVault.length > 50_000) return 'Recovery vault too large.';
+    if (recoverySalt && recoverySalt.length > 200) return 'Recovery salt too large.';
+    if (encryptedRecoveryKey && encryptedRecoveryKey.length > 5_000) return 'Recovery key blob too large.';
+    if (recoveryDigest && (recoveryDigest.length < 40 || recoveryDigest.length > 100)) {
+        return 'Invalid recovery key digest.';
+    }
+
+    // Optional notification email: basic shape check, normalize.
+    let notificationEmail: string | null = null;
+    if (notificationEmailRaw.trim().length > 0) {
+        const trimmed = notificationEmailRaw.trim();
+        if (trimmed.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+            return 'Notification email looks invalid.';
+        }
+        notificationEmail = trimmed;
+    }
+
+    // Recovery payload is required for new signups (the client builds all
+    // four pieces together). Existing users can backfill later via
+    // setupAccountRecoveryAction.
+    if (!recoveryVault || !recoverySalt || !recoveryDigest || !encryptedRecoveryKey) {
+        return 'Missing account recovery material. Please reload and try again.';
+    }
+
+    const recoveryHash = await bcrypt.hash(recoveryDigest, BCRYPT_COST);
 
     try {
         const { error } = await supabaseAdmin.from('Users').insert({
@@ -107,7 +137,12 @@ export async function register(
             password_hash: hashedPassword,
             public_key: publicKey,
             encrypted_vault: encryptedVault,
-            vault_salt: vaultSalt
+            vault_salt: vaultSalt,
+            recovery_vault: recoveryVault,
+            recovery_salt: recoverySalt,
+            recovery_hash: recoveryHash,
+            encrypted_recovery_key: encryptedRecoveryKey,
+            notification_email: notificationEmail,
         });
 
         if (error) throw error;
@@ -128,24 +163,52 @@ export async function getUserProfileAction() {
 
     const { data, error } = await supabaseAdmin
         .from('Users')
-        .select('username, created_at, location, preferred_contact')
+        .select('username, created_at, location, preferred_contact, notification_email, recovery_vault')
         .eq('id', session.user.id)
         .single();
 
     if (error || !data) return { error: "Failed to load profile" };
-    return { profile: data };
+    // Don't leak the recovery vault itself — just whether recovery is set up.
+    const { recovery_vault, ...rest } = data;
+    return {
+        profile: {
+            ...rest,
+            recovery_set_up: Boolean(recovery_vault),
+        },
+    };
 }
 
-export async function updateUserProfileAction(location: string, preferredContact: string) {
+export async function updateUserProfileAction(
+    location: string,
+    preferredContact: string,
+    notificationEmail?: string,
+) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
+    let normalizedEmail: string | null | undefined = undefined;
+    if (notificationEmail !== undefined) {
+        const trimmed = notificationEmail.trim();
+        if (trimmed.length === 0) {
+            normalizedEmail = null;
+        } else if (trimmed.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+            return { error: "Notification email looks invalid." };
+        } else {
+            normalizedEmail = trimmed;
+        }
+    }
+
+    const update: Record<string, string | null> = {
+        location: location || null,
+        preferred_contact: preferredContact || null,
+    };
+    if (normalizedEmail !== undefined) {
+        update.notification_email = normalizedEmail;
+    }
+
     const { error } = await supabaseAdmin
         .from('Users')
-        .update({
-            location: location || null,
-            preferred_contact: preferredContact || null,
-        })
+        .update(update)
         .eq('id', session.user.id);
 
     if (error) return { error: "Failed to update profile" };
