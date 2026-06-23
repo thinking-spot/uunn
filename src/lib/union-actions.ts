@@ -7,6 +7,7 @@ import { validate, uuid, title as titleSchema, description as descSchema, unionS
 import { verifyMembership, verifyAdmin } from '@/lib/auth-helpers';
 import { RATE_LIMITS } from '@/lib/constants';
 import { logError } from '@/lib/log';
+import { getClientIp } from '@/lib/request-meta';
 
 export async function createUnionAction(
     name: string,
@@ -304,14 +305,20 @@ export async function createInviteAction(unionId: string, encryptedUnionKey: str
 }
 
 export async function getInviteAction(inviteId: string) {
-    const session = await auth();
-    if (!session?.user?.id) return { error: "Not authenticated" };
-
+    // No auth required: the invite link is the credential. The wrapped union key
+    // returned here can only be unwrapped with the visit private key in the URL
+    // fragment (never seen by the server), and invite IDs are 122-bit UUIDs so
+    // probing is infeasible. Forcing auth here would 404 every recipient who
+    // hasn't signed up yet — i.e. the whole point of the invite flow.
     const idV = validate(uuid, inviteId);
     if ('error' in idV) return { error: idV.error };
 
-    // Throttle invite-id probing per-user
-    const { allowed } = rateLimit(`invite-fetch:${session.user.id}`, 30, 60_000);
+    // Throttle invite-id probing per-user (or per-IP when unauthenticated).
+    const session = await auth();
+    const rlKey = session?.user?.id
+        ? `invite-fetch:${session.user.id}`
+        : `invite-fetch:ip:${await getClientIp()}`;
+    const { allowed } = rateLimit(rlKey, 30, 60_000);
     if (!allowed) return { error: "Too many requests" };
 
     const { data, error } = await supabaseAdmin
