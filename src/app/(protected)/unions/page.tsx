@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Copy, Plus, Users, ArrowRightLeft, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
@@ -27,8 +28,13 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 
 import { useUnion } from "@/context/UnionContext";
 
+const VALID_TABS = new Set(["my-unions", "join", "create", "discover", "allied"]);
+
 export default function UnionsPage() {
     const { user } = useAuth();
+    const searchParams = useSearchParams();
+    const tabParam = searchParams.get("tab");
+    const initialTab = tabParam && VALID_TABS.has(tabParam) ? tabParam : "my-unions";
     const { unions, activeUnion, refreshUnions, setActiveUnion } = useUnion();
     const [alliedUnions, setAlliedUnions] = useState<Union[]>([]);
     // loading is handled by UnionContext for unions, but we might want local loading for actions
@@ -146,7 +152,7 @@ export default function UnionsPage() {
                     </div>
                 </div>
 
-                <Tabs defaultValue="my-unions" className="w-full">
+                <Tabs defaultValue={initialTab} className="w-full">
                     <div className="overflow-x-auto pb-2 -mx-4 px-4 md:px-0 md:mx-0">
                         <TabsList className="mb-6 md:mb-8 inline-flex w-auto min-w-full md:min-w-0 justify-start">
                             <TabsTrigger value="my-unions" className="whitespace-nowrap">My Unions</TabsTrigger>
