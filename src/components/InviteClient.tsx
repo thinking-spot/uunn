@@ -126,7 +126,7 @@ export default function InviteClient({ inviteId, unionName }: { inviteId: string
                     disabled={status === 'joining' || status === 'idle'} // Idle means key not parsed yet
                 >
                     {status === 'joining' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {user ? 'Accept Invite & Join' : 'Log In to Accept'}
+                    {user ? 'Accept Invite & Join' : 'Log In or Sign Up to Continue'}
                 </Button>
             </CardFooter>
         </Card>

@@ -1,6 +1,7 @@
 import {
     createUnionAction,
     joinUnionAction,
+    joinViaSecureInviteAction,
     getUserUnionsAction,
     getMyPublicKeyAction,
     createInviteAction,
@@ -288,15 +289,10 @@ export async function joinSecureInvite(inviteId: string, visitPrivateKeyJwkStr: 
 
     const myEncryptedKey = await wrapKey(unionKey, myPublicKey);
 
-    // 5. Join
-    const result = await joinUnionAction(inviteId, myEncryptedKey);
+    // 5. Join — secure invites resolve via UnionInvites.id, not Unions.invite_code.
+    const result = await joinViaSecureInviteAction(inviteId, myEncryptedKey);
     if (result.error) {
         throw new Error(result.error);
     }
-
-    if (result.alreadyMember) {
-        return result.unionId!;
-    }
-
     return result.unionId!;
 }

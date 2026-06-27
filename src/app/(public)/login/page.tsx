@@ -46,6 +46,15 @@ function LoginForm() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const [isRegistering, setIsRegistering] = useState(searchParams.get('signup') === '1');
+
+    // Only honor same-origin relative paths to prevent open-redirect.
+    // Must start with "/", but not "//..." (protocol-relative) or "/\\..." (some
+    // browsers treat backslashes as slashes when resolving).
+    const rawRedirect = searchParams.get('redirectTo');
+    const redirectTo =
+        rawRedirect && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') && !rawRedirect.startsWith('/\\')
+            ? rawRedirect
+            : '/dashboard';
     const [publicKey, setPublicKey] = useState('');
     const [privateKeyJwk, setPrivateKeyJwk] = useState<JsonWebKey | null>(null);
     const [username, setUsername] = useState('');
@@ -181,7 +190,7 @@ function LoginForm() {
                 setIsPending(false);
                 return;
             }
-            router.push('/dashboard');
+            router.push(redirectTo);
         } catch {
             setErrorMessage('Something went wrong.');
             setIsPending(false);
@@ -238,7 +247,7 @@ function LoginForm() {
                 setErrorMessage('Invalid credentials.');
                 setIsPending(false);
             } else {
-                router.push('/dashboard');
+                router.push(redirectTo);
             }
         } catch {
             setErrorMessage('Something went wrong.');

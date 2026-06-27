@@ -304,6 +304,60 @@ export async function createInviteAction(unionId: string, encryptedUnionKey: str
     return { inviteId: data.id };
 }
 
+/**
+ * Redeem a Secure Invite Link. Unlike joinUnionAction (which looks up by the
+ * union's short invite_code), this resolves the union via the UnionInvites
+ * row identified by the per-recipient invite UUID. The caller must supply the
+ * union key already rewrapped for this user — the wrap happens client-side
+ * after decrypting the escrow with the URL-fragment private key.
+ */
+export async function joinViaSecureInviteAction(inviteId: string, encryptedSharedKey: string) {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+
+    const idV = validate(uuid, inviteId);
+    if ('error' in idV) return { error: idV.error };
+
+    const keyV = validate(encryptedPayload, encryptedSharedKey);
+    if ('error' in keyV) return { error: keyV.error };
+
+    const { allowed } = rateLimit(`join:${session.user.id}`, 20, 60_000);
+    if (!allowed) return { error: "Too many requests. Please slow down." };
+
+    const { data: invite, error: inviteError } = await supabaseAdmin
+        .from('UnionInvites')
+        .select('union_id, expires_at')
+        .eq('id', inviteId)
+        .single();
+    if (inviteError || !invite) return { error: "Invalid invite" };
+    if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+        return { error: "Invite expired" };
+    }
+    const unionId = invite.union_id;
+
+    const { data: existing } = await supabaseAdmin
+        .from('Memberships')
+        .select('user_id')
+        .eq('union_id', unionId)
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+    if (existing) return { alreadyMember: true, unionId };
+
+    const { error } = await supabaseAdmin
+        .from('Memberships')
+        .insert({
+            union_id: unionId,
+            user_id: session.user.id,
+            role: 'member',
+            encrypted_shared_key: encryptedSharedKey
+        });
+    if (error) {
+        logError('joinViaSecureInvite insert failed', error);
+        return { error: "Failed to join union" };
+    }
+    return { unionId };
+}
+
 export async function getInviteAction(inviteId: string) {
     // No auth required: the invite link is the credential. The wrapped union key
     // returned here can only be unwrapped with the visit private key in the URL
