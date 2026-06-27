@@ -28,7 +28,7 @@ export default function SecurityPage() {
                         uunn encrypts message content, document content and titles, vote choices, vote titles, and vote descriptions on your device using the Web Crypto API before they leave your browser. The server only stores ciphertext for these fields.
                     </p>
                     <p className="text-sm mt-2 text-muted-foreground">
-                        <strong>Note:</strong> Coarse metadata that the server needs in order to route requests — union names, usernames, membership lists, and timestamps — remains visible to the server. AI document drafting, when used, sends the prompt content to Google Gemini.
+                        <strong>What the server can see (metadata):</strong> union names, usernames, who belongs to which union, when messages and documents were created, and which user created or sent them. Encrypted titles for votes and documents are usually present; in older records or rare client failures, a plaintext title may have been stored as a fallback — we&apos;re tightening this so encryption is required going forward. AI document drafting, when used, sends the prompt content to Google Gemini.
                     </p>
                 </div>
 
@@ -44,8 +44,8 @@ export default function SecurityPage() {
                             <p>Each union has a shared AES-256 key. All messages and documents are encrypted with this key using AES-GCM with a unique 96-bit initialization vector (IV) per message, ensuring that identical messages produce different ciphertexts.</p>
                         </div>
                         <div className="p-4 border rounded-md">
-                            <h3 className="font-semibold text-foreground mb-1">Key Backup — PBKDF2 (100,000 iterations)</h3>
-                            <p>Your private key can be backed up in an encrypted vault protected by your password. The password is never sent to the server — a key is derived locally using PBKDF2 with SHA-256 and used to encrypt the vault.</p>
+                            <h3 className="font-semibold text-foreground mb-1">Key Backup — PBKDF2-SHA-256 (600,000 iterations)</h3>
+                            <p>Your private key is backed up in an encrypted vault protected by your password. The password is never sent to the server — a key is derived locally using PBKDF2 with SHA-256 (600,000 iterations, matching OWASP&apos;s 2023 guidance) and used to encrypt the vault. Older accounts use a 100,000-iteration vault and are upgraded automatically on next sign-in.</p>
                         </div>
                     </div>
                 </section>
@@ -59,7 +59,8 @@ export default function SecurityPage() {
                         <li>All encryption and decryption happens client-side in your browser.</li>
                         <li>Private keys are stored in session storage and cleared on logout.</li>
                         <li>Passwords are hashed with bcrypt before storage — we never see plaintext passwords.</li>
-                        <li>No tracking cookies, no IP logging. We use Sentry for error monitoring only — it receives anonymized error reports with PII stripped, but no user content.</li>
+                        <li>No tracking cookies, no analytics scripts. Client IPs are extracted in-memory to rate-limit sensitive operations (signup, login, password reset, recovery and invite lookups) but are not written to any log we control.</li>
+                        <li>We use Sentry for error monitoring. Before sending, error reports are scrubbed of usernames, emails, IPs, request bodies, breadcrumbs, and extras — Sentry receives stack traces and error types, nothing more.</li>
                     </ul>
                 </section>
 

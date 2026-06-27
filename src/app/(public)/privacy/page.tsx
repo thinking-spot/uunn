@@ -24,26 +24,36 @@ export default function PrivacyPage() {
 
             <div className="space-y-8">
                 <section>
-                    <h2 className="text-xl font-bold mb-4">What We Collect (Very Little)</h2>
+                    <h2 className="text-xl font-bold mb-4">What We Store</h2>
                     <p className="text-muted-foreground mb-4">
-                        We practice data minimization. We only store what is absolutely necessary to deliver the service.
+                        We practice data minimization. We only store what is needed to deliver the service.
                     </p>
                     <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
-                        <li>Encrypted group metadata (to know which union you belong to).</li>
-                        <li>Encrypted message metadata (timestamps, sender ID).</li>
-                        <li>Account credentials (hashed passwords — we never store plaintext passwords).</li>
+                        <li>Your <strong>username</strong> and a <strong>bcrypt hash</strong> of your password (we never store plaintext passwords).</li>
+                        <li>Your <strong>public key</strong>, and an encrypted vault containing your private key (we cannot decrypt the vault without your password).</li>
+                        <li>Union membership rows — i.e. which usernames belong to which unions — so the app can route messages to the right people.</li>
+                        <li>Message, document, vote, and (most) title ciphertext, plus timestamps and sender IDs. The content itself is encrypted on your device with keys we never see.</li>
                     </ul>
                 </section>
 
                 <section>
-                    <h2 className="text-xl font-bold mb-4">What We DON&apos;T Collect</h2>
+                    <h2 className="text-xl font-bold mb-4">What We Don&apos;t Have</h2>
                     <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
-                        <li><strong>Your Messages:</strong> Content is end-to-end encrypted. We cannot read it.</li>
-                        <li><strong>Real Identity:</strong> We don&apos;t require legal names.</li>
-                        <li><strong>Work Email:</strong> Not required. Sign up with just a username.</li>
-                        <li><strong>IP Addresses:</strong> We do not log visitor IP addresses.</li>
-                        <li><strong>Analytics:</strong> We do not use tracking cookies or analytics services.</li>
+                        <li><strong>Plaintext content:</strong> Messages, document bodies, vote choices, and (with rare exception) titles are end-to-end encrypted. We cannot read them.</li>
+                        <li><strong>Your real identity:</strong> We don&apos;t require legal names.</li>
+                        <li><strong>Your email:</strong> Not required to sign up. (You can optionally add one in Settings for notifications; that value is stored in our database.)</li>
+                        <li><strong>Tracking cookies or analytics:</strong> No third-party analytics scripts, no advertising trackers.</li>
                     </ul>
+                </section>
+
+                <section>
+                    <h2 className="text-xl font-bold mb-4">IP Addresses</h2>
+                    <p className="text-muted-foreground mb-4">
+                        We do not persist visitor IP addresses to any log we control. However, we extract the client IP in-memory for a few seconds at a time to rate-limit sensitive operations (signup, login, password reset, recovery-vault lookups, and invite-link lookups). The values are kept in ephemeral cache that resets when the server process recycles; they are not written to disk.
+                    </p>
+                    <p className="text-muted-foreground">
+                        Our hosting provider (Vercel) and our database provider (Supabase) may keep standard web-server access logs that include IP addresses. These logs are outside our direct control and subject to their respective privacy policies.
+                    </p>
                 </section>
 
                 <section>

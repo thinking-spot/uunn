@@ -29,9 +29,9 @@ export default function SupportPage() {
                             <h3 className="font-semibold">Organizing 101</h3>
                             <p className="text-xs text-muted-foreground mt-1">Learn the basics of workplace organizing.</p>
                         </a>
-                        <a href="/join/demo" className="block p-4 border rounded-lg hover:border-primary transition-colors">
-                            <h3 className="font-semibold">Join a Union</h3>
-                            <p className="text-xs text-muted-foreground mt-1">How to use invite codes.</p>
+                        <a href="/how-it-works" className="block p-4 border rounded-lg hover:border-primary transition-colors">
+                            <h3 className="font-semibold">How uunn Works</h3>
+                            <p className="text-xs text-muted-foreground mt-1">Encryption, invite links, and the basics of joining a union.</p>
                         </a>
                     </div>
                 </section>
