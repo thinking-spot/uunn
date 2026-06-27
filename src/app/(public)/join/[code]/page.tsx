@@ -4,7 +4,9 @@ import { useState, useEffect } from "react";
 import { Loader2, ShieldCheck, ArrowRight, Check } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getUnionByInviteCodeAction, joinUnionAction } from "@/lib/union-actions";
+import { getUnionByInviteCodeAction } from "@/lib/union-actions";
+import { joinUnion } from "@/lib/client-actions/unions";
+import { useAuth } from "@/context/AuthContext";
 
 type UnionInfo = {
     id: string;
@@ -16,6 +18,7 @@ type UnionInfo = {
 
 export default function JoinPage({ params }: { params: Promise<{ code: string }> }) {
     const router = useRouter();
+    const { user } = useAuth();
     const [code, setCode] = useState("");
     const [step, setStep] = useState(0); // 0 = loading
     const [isLoading, setIsLoading] = useState(false);
@@ -42,20 +45,20 @@ export default function JoinPage({ params }: { params: Promise<{ code: string }>
 
     const handleJoin = async () => {
         if (!unionInfo) return;
-        setIsLoading(true);
-        const result = await joinUnionAction(unionInfo.id);
-        if (result.error) {
-            setError(result.error);
-            setIsLoading(false);
+        if (!user) {
+            const returnUrl = encodeURIComponent(`/join/${code}`);
+            router.push(`/login?redirectTo=${returnUrl}`);
             return;
         }
-        if (result.alreadyMember) {
+        setIsLoading(true);
+        try {
+            await joinUnion(code, user.uid);
             setStep(4);
             setTimeout(() => router.push("/dashboard"), 1500);
-            return;
+        } catch (e: any) {
+            setError(e?.message || "Failed to join union");
+            setIsLoading(false);
         }
-        setStep(4);
-        setTimeout(() => router.push("/dashboard"), 1500);
     };
 
     return (
@@ -128,14 +131,18 @@ export default function JoinPage({ params }: { params: Promise<{ code: string }>
                             </div>
                         </div>
                         <p className="text-xs text-muted-foreground mb-6">
-                            You must be logged in to join. If you don't have an account, you'll be asked to create one.
+                            {user
+                                ? `Joining as ${user.displayName}.`
+                                : "You'll be prompted to log in or create an account, then sent back here to finish joining."}
                         </p>
                         <button
                             onClick={handleJoin}
                             disabled={isLoading}
                             className="w-full bg-primary text-primary-foreground py-2 rounded-md font-medium hover:bg-primary/90 flex items-center justify-center"
                         >
-                            {isLoading ? <Loader2 className="animate-spin h-5 w-5" /> : "Join Union"}
+                            {isLoading
+                                ? <Loader2 className="animate-spin h-5 w-5" />
+                                : user ? "Join Union" : "Log In or Sign Up to Continue"}
                         </button>
                         {error && <p className="text-destructive text-sm mt-2">{error}</p>}
                     </div>

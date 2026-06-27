@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Paperclip, Send, ShieldCheck, Lock, Loader2, MessageSquare, ArrowRightLeft, ChevronDown } from "lucide-react";
+import { Send, ShieldCheck, Lock, Loader2, MessageSquare, ArrowRightLeft, ChevronDown } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { getUserUnions } from "@/lib/client-actions/unions";
 import { useMessages } from "@/hooks/useMessages";
@@ -315,13 +315,6 @@ export default function MessagesPage() {
                         {/* Input Area */}
                         <div className="p-4 border-t bg-card/50">
                             <div className="flex items-center gap-2 rounded-xl border bg-background px-4 py-2 focus-within:ring-2 ring-primary/20 transition-all shadow-sm">
-                                <button
-                                    className="text-muted-foreground opacity-50 cursor-not-allowed"
-                                    title="File attachments coming soon"
-                                    disabled
-                                >
-                                    <Paperclip className="h-5 w-5" />
-                                </button>
                                 <input
                                     className="flex-1 bg-transparent border-none focus:outline-none text-sm py-1"
                                     placeholder={`Message ${activeChannel?.name}...`}

@@ -227,7 +227,8 @@ export async function getUserUnionsAction() {
                 invite_code,
                 location,
                 description,
-                is_public
+                is_public,
+                member_count:Memberships(count)
             )
         `)
         .eq('user_id', session.user.id);
@@ -247,7 +248,7 @@ export async function getUserUnionsAction() {
         description: m.union.description,
         isPublic: m.union.is_public,
         role: m.role,
-        members: ['me'] // Mock
+        memberCount: m.union.member_count?.[0]?.count ?? 0
     }));
 }
 

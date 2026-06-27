@@ -10,7 +10,7 @@ export interface Union {
     location?: string;
     description?: string;
     isPublic?: boolean;
-    members: string[];
+    memberCount: number;
 }
 
 export interface MessageData {

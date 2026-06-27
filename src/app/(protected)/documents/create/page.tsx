@@ -233,22 +233,13 @@ function WizardContent() {
                         <div className="flex justify-between items-center bg-card p-4 rounded-xl border">
                             <button onClick={() => setStep(2)} className="text-muted-foreground">Back to inputs</button>
 
-                            <div className="flex gap-4">
-                                <button
-                                    onClick={handleSave}
-                                    disabled={loading}
-                                    className="px-6 py-2 rounded-md border border-primary text-primary font-medium hover:bg-primary/5"
-                                >
-                                    {loading ? <Loader2 className="animate-spin h-4 w-4" /> : "Save Draft"}
-                                </button>
-                                <button
-                                    onClick={handleSave}
-                                    disabled={loading}
-                                    className="bg-primary text-primary-foreground px-6 py-2 rounded-md font-medium flex items-center gap-2 hover:bg-primary/90"
-                                >
-                                    <Send className="h-4 w-4" /> Finalize & Propose
-                                </button>
-                            </div>
+                            <button
+                                onClick={handleSave}
+                                disabled={loading}
+                                className="bg-primary text-primary-foreground px-6 py-2 rounded-md font-medium flex items-center gap-2 hover:bg-primary/90"
+                            >
+                                {loading ? <Loader2 className="animate-spin h-4 w-4" /> : <><Send className="h-4 w-4" /> Save Document</>}
+                            </button>
                         </div>
                     </div>
                 )}

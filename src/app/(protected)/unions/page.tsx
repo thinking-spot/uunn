@@ -170,7 +170,7 @@ export default function UnionsPage() {
                                             <h3 className="font-semibold text-lg">{union.name}</h3>
                                             <div className="flex items-center text-xs text-muted-foreground">
                                                 <Users className="mr-1 h-3 w-3" />
-                                                {union.members.length} members
+                                                {union.memberCount} {union.memberCount === 1 ? 'member' : 'members'}
                                             </div>
                                         </div>
                                     </div>
