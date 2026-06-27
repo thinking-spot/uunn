@@ -73,6 +73,21 @@ export function RecoveryKeyPanel({
                 </div>
             </div>
 
+            <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1.5">
+                <p className="font-medium text-foreground">Good places to keep this:</p>
+                <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                    <li>A password manager (1Password, Bitwarden, Apple/Google passwords) as a secure note.</li>
+                    <li>Written on paper and stored somewhere only you can reach.</li>
+                    <li>Downloaded to a personal device — not a work device or work email.</li>
+                </ul>
+                <p className="font-medium text-foreground pt-1">Avoid:</p>
+                <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                    <li>Email or chat messages (subpoenable, indexed).</li>
+                    <li>Work devices, work email, or work cloud storage.</li>
+                    <li>Photos in a phone&apos;s camera roll if it syncs to cloud you don&apos;t control.</li>
+                </ul>
+            </div>
+
             <ol className="grid grid-cols-2 sm:grid-cols-3 gap-2 rounded-md border bg-muted/40 p-3 text-sm" aria-label="Recovery key words">
                 {words.map((w, i) => (
                     <li key={i} className="flex items-baseline gap-2">
