@@ -46,8 +46,8 @@ export default function DocumentEditorPage({ params }: { params: Promise<{ id: s
 
         const encKey = getEncryptionKeyForDoc(rawResult.document.union_id);
         if (!encKey) {
-            setDoc({ id: rawResult.document.id, title: rawResult.document.title, content: '[No encryption key available]', union_id: rawResult.document.union_id, updated_at: rawResult.document.updated_at });
-            setContent('[No encryption key available]');
+            setDoc({ id: rawResult.document.id, title: rawResult.document.title, content: '[Encrypted — your account doesn\'t have the key for this union. If you were just removed or the key was rotated, an admin can re-add you.]', union_id: rawResult.document.union_id, updated_at: rawResult.document.updated_at });
+            setContent('[Encrypted — your account doesn\'t have the key for this union. If you were just removed or the key was rotated, an admin can re-add you.]');
             setLoading(false);
             return;
         }

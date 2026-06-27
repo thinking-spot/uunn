@@ -114,7 +114,11 @@ export default function MessagesPage() {
                     const text = await decryptContent(m.ciphertext, m.iv, key, aad);
                     return { id: m.id, senderId: m.senderId, senderName: m.senderName, createdAt: m.createdAt, isOptimistic: m.isOptimistic, text };
                 } catch {
-                    return { id: m.id, senderId: m.senderId, senderName: m.senderName, createdAt: m.createdAt, isOptimistic: m.isOptimistic, text: "Error decrypting" };
+                    // Most likely cause: the union key was rotated after this message
+                    // was sent (e.g. a member was removed) and we have the new key,
+                    // not the one this ciphertext was sealed with. Surface that
+                    // explicitly so it doesn't read like a generic crash.
+                    return { id: m.id, senderId: m.senderId, senderName: m.senderName, createdAt: m.createdAt, isOptimistic: m.isOptimistic, text: "🔒 Couldn't decrypt — this message was sealed with a key your account doesn't have (likely from before the encryption key was rotated)." };
                 }
             }));
             setMessages(decrypted);

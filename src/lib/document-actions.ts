@@ -5,6 +5,7 @@ import { auth } from '@/auth';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { validate, updateDocumentInput, uuid, encryptedPayload, iv as ivSchema } from '@/lib/validation';
 import { verifyMembership } from '@/lib/auth-helpers';
+import { rateLimit } from '@/lib/rate-limit';
 import type { Document } from '@/lib/types';
 import { logError } from '@/lib/log';
 
@@ -38,6 +39,9 @@ export async function createDocumentAction(
         const idV = validate(uuid, id);
         if ('error' in idV) return { error: idV.error };
     }
+
+    const { allowed } = rateLimit(`doc-create:${session.user.id}`, 20, 60_000);
+    if (!allowed) return { error: "Slow down — too many documents created in the last minute." };
 
     if (!await verifyMembership(unionId, session.user.id)) {
         return { error: "Not authorized — members only" };
@@ -209,6 +213,11 @@ export async function updateDocumentAction(docId: string, contentBlob: string, i
 
     const v = validate(updateDocumentInput, { docId, contentBlob, iv });
     if ('error' in v) return { error: v.error };
+
+    // Cap autosaves at ~2/sec sustained. Generous, but stops a stuck save loop
+    // or hostile script from hammering the DB.
+    const { allowed } = rateLimit(`doc-update:${session.user.id}`, 120, 60_000);
+    if (!allowed) return { error: "Slow down — too many save attempts in the last minute." };
 
     // Fetch document to get its union_id for authorization
     const { data: doc } = await supabaseAdmin

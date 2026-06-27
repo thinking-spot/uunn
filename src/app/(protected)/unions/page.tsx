@@ -432,19 +432,45 @@ function PendingAllianceRequests({ unionId }: { unionId?: string }) {
     };
 
     const handleRespond = async (id: string, accept: boolean) => {
+        // Accepting commits the alliance row first; key distribution happens
+        // client-side after. If distribution fails the alliance exists but
+        // can't be used — retry with backoff before giving up, and surface a
+        // recoverable error if all retries fail.
         try {
             await respondToAllianceRequestAction(id, accept);
-            if (accept) {
-                // Distribute encryption keys to all members of both unions
-                toast.info("Setting up encrypted channel...");
-                await distributeAllianceKeys(id);
-                toast.success("Alliance established with encrypted messaging!");
-            } else {
-                toast.success("Alliance request denied.");
-            }
-        } catch (e) {
-            toast.error("Failed to process alliance request");
+        } catch {
+            toast.error("Failed to record your response to the alliance request.");
+            load();
+            return;
         }
+
+        if (!accept) {
+            toast.success("Alliance request denied.");
+            load();
+            return;
+        }
+
+        toast.info("Setting up encrypted channel...");
+        let lastError: unknown = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                await distributeAllianceKeys(id);
+                toast.success("Alliance established with encrypted messaging.");
+                load();
+                return;
+            } catch (e) {
+                lastError = e;
+                if (attempt < 3) {
+                    await new Promise(r => setTimeout(r, 500 * attempt));
+                }
+            }
+        }
+        const reason = lastError instanceof Error ? lastError.message : "unknown error";
+        toast.error(
+            `Alliance accepted, but encrypted channel setup failed (${reason}). ` +
+            `Refresh and re-accept, or ask an admin from the other union to retry.`,
+            { duration: 10_000 },
+        );
         load();
     };
 

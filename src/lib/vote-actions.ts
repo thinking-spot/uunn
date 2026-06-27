@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@/auth';
 import { validate, createVoteInput, uuid, encryptedPayload, iv as ivSchema } from '@/lib/validation';
 import { verifyMembership } from '@/lib/auth-helpers';
+import { rateLimit } from '@/lib/rate-limit';
 import type { VoteRawData, VoteResponseRaw } from '@/lib/types';
 import { logError } from '@/lib/log';
 
@@ -44,6 +45,9 @@ export async function createVoteAction(
         const divV = validate(ivSchema, descriptionIv ?? '');
         if ('error' in divV) return { error: divV.error };
     }
+
+    const { allowed: createAllowed } = rateLimit(`vote-create:${session.user.id}`, 10, 60_000);
+    if (!createAllowed) return { error: "Slow down — too many votes created in the last minute." };
 
     if (!await verifyMembership(unionId, session.user.id)) {
         return { error: "Not authorized — members only" };
@@ -194,6 +198,12 @@ export async function castVoteAction(voteId: string, choiceBlob: string, iv: str
     if ('error' in bv) return { error: bv.error };
     const iv2 = validate(ivSchema, iv);
     if ('error' in iv2) return { error: iv2.error };
+
+    // Throttle cast attempts to defend against retry storms / scripted clicks.
+    // The already-voted check below also prevents double-counting, but the rate
+    // limit short-circuits before the DB does any work.
+    const { allowed } = rateLimit(`vote-cast:${session.user.id}`, 30, 60_000);
+    if (!allowed) return { error: "Slow down — too many cast attempts in the last minute." };
 
     // Verify membership via the vote's union
     const { data: vote } = await supabaseAdmin
