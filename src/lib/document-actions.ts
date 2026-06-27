@@ -3,27 +3,37 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { auth } from '@/auth';
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { validate, createDocumentInput, updateDocumentInput, uuid } from '@/lib/validation';
+import { validate, updateDocumentInput, uuid, encryptedPayload, iv as ivSchema } from '@/lib/validation';
 import { verifyMembership } from '@/lib/auth-helpers';
 import type { Document } from '@/lib/types';
 import { logError } from '@/lib/log';
 
+// Placeholder written into the legacy NOT NULL `title` column. The real
+// title is always in title_blob/title_iv; this string is just there to
+// satisfy the schema until the column is made nullable.
+const DOC_TITLE_PLACEHOLDER = 'Encrypted Document';
+
 export async function createDocumentAction(
     unionId: string,
-    // Plaintext placeholder visible to server (e.g. "Encrypted Document").
-    // The real title lives in titleBlob/titleIv if provided.
-    title: string,
+    titleBlob: string,
+    titleIv: string,
     contentBlob: string = '',
     iv: string = '',
     id?: string,
-    titleBlob?: string,
-    titleIv?: string,
 ) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
-    const v = validate(createDocumentInput, { unionId, title, contentBlob, iv });
-    if ('error' in v) return { error: v.error };
+    const uV = validate(uuid, unionId);
+    if ('error' in uV) return { error: uV.error };
+    const tbV = validate(encryptedPayload, titleBlob);
+    if ('error' in tbV) return { error: tbV.error };
+    const tivV = validate(ivSchema, titleIv);
+    if ('error' in tivV) return { error: tivV.error };
+    const cbV = validate(encryptedPayload, contentBlob);
+    if ('error' in cbV) return { error: cbV.error };
+    const civV = validate(ivSchema, iv);
+    if ('error' in civV) return { error: civV.error };
     if (id !== undefined) {
         const idV = validate(uuid, id);
         if ('error' in idV) return { error: idV.error };
@@ -36,13 +46,13 @@ export async function createDocumentAction(
     const insertRow: Record<string, unknown> = {
         union_id: unionId,
         created_by: session.user.id,
-        title,
+        title: DOC_TITLE_PLACEHOLDER,
         content_blob: contentBlob,
         iv,
+        title_blob: titleBlob,
+        title_iv: titleIv,
     };
     if (id) insertRow.id = id;
-    if (titleBlob !== undefined) insertRow.title_blob = titleBlob;
-    if (titleIv !== undefined) insertRow.title_iv = titleIv;
 
     const { data, error } = await supabaseAdmin
         .from('Documents')

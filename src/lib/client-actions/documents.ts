@@ -12,10 +12,6 @@ import type { DecryptedDocument } from "@/lib/types";
 
 export type { DecryptedDocument };
 
-// Plaintext placeholder stored in the visible `title` column for new rows.
-// Hidden behind the encrypted title for any client that has the union key.
-const TITLE_PLACEHOLDER = 'Encrypted Document';
-
 export async function createEncryptedDocument(
     unionId: string,
     title: string,
@@ -34,15 +30,13 @@ export async function createEncryptedDocument(
 
     if (!content) {
         return createDocumentAction(
-            unionId, TITLE_PLACEHOLDER, '', '', id,
-            titleEncrypted.cipherText, titleEncrypted.iv,
+            unionId, titleEncrypted.cipherText, titleEncrypted.iv, '', '', id,
         );
     }
 
     const { cipherText, iv } = await encryptContent(content, unionKey, aadFor.document(unionId, id));
     return createDocumentAction(
-        unionId, TITLE_PLACEHOLDER, cipherText, iv, id,
-        titleEncrypted.cipherText, titleEncrypted.iv,
+        unionId, titleEncrypted.cipherText, titleEncrypted.iv, cipherText, iv, id,
     );
 }
 

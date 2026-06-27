@@ -4,12 +4,9 @@ import { aadFor } from "@/lib/aad";
 import { getUnionKey } from "@/lib/client-crypto";
 import type { VoteData, VoteRawData } from "@/lib/types";
 
-const VOTE_TITLE_PLACEHOLDER = 'Encrypted Vote';
-
 /**
  * Create a vote with title + description encrypted client-side (H4). The
- * server only sees opaque ciphertext for these fields plus a generic
- * placeholder in the legacy `title`/`description` columns.
+ * server only sees opaque ciphertext; it never receives the plaintext.
  */
 export async function createEncryptedVote(
     unionId: string,
@@ -29,18 +26,16 @@ export async function createEncryptedVote(
     const titleEnc = await encryptContent(title, unionKey, aadFor.voteTitle(unionId, id));
     const descEnc = description
         ? await encryptContent(description, unionKey, aadFor.voteDescription(unionId, id))
-        : { cipherText: '', iv: '' };
+        : null;
 
     const result = await createVoteAction(
         unionId,
-        VOTE_TITLE_PLACEHOLDER,
-        '', // legacy description placeholder
-        documentIds,
-        id,
         titleEnc.cipherText,
         titleEnc.iv,
-        description ? descEnc.cipherText : undefined,
-        description ? descEnc.iv : undefined,
+        documentIds,
+        id,
+        descEnc?.cipherText,
+        descEnc?.iv,
     );
 
     if (result.error) return { error: result.error };

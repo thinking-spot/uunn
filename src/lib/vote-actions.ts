@@ -7,27 +7,42 @@ import { verifyMembership } from '@/lib/auth-helpers';
 import type { VoteRawData, VoteResponseRaw } from '@/lib/types';
 import { logError } from '@/lib/log';
 
+// Plaintext placeholders written into the legacy NOT NULL `title` and
+// `description` columns. The real values live in the *_blob/*_iv columns
+// the client encrypts — these constants exist only to keep the schema
+// happy until those columns are made nullable.
+const VOTE_TITLE_PLACEHOLDER = 'Encrypted Vote';
+const VOTE_DESC_PLACEHOLDER = '';
+
 export async function createVoteAction(
     unionId: string,
-    // Plaintext placeholders visible to the server; real values are in
-    // *_blob/*_iv when the client encrypts them (H4).
-    title: string,
-    description: string,
+    titleBlob: string,
+    titleIv: string,
     documentIds: string[] = [],
     id?: string,
-    titleBlob?: string,
-    titleIv?: string,
     descriptionBlob?: string,
     descriptionIv?: string,
 ) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
-    const v = validate(createVoteInput, { unionId, title, description, documentIds });
-    if ('error' in v) return { error: v.error };
+    const uV = validate(uuid, unionId);
+    if ('error' in uV) return { error: uV.error };
+    const tbV = validate(encryptedPayload, titleBlob);
+    if ('error' in tbV) return { error: tbV.error };
+    const tivV = validate(ivSchema, titleIv);
+    if ('error' in tivV) return { error: tivV.error };
+    const docsV = validate(createVoteInput.shape.documentIds, documentIds);
+    if ('error' in docsV) return { error: docsV.error };
     if (id !== undefined) {
         const idV = validate(uuid, id);
         if ('error' in idV) return { error: idV.error };
+    }
+    if (descriptionBlob !== undefined) {
+        const dbV = validate(encryptedPayload, descriptionBlob);
+        if ('error' in dbV) return { error: dbV.error };
+        const divV = validate(ivSchema, descriptionIv ?? '');
+        if ('error' in divV) return { error: divV.error };
     }
 
     if (!await verifyMembership(unionId, session.user.id)) {
@@ -37,15 +52,17 @@ export async function createVoteAction(
     const insertRow: Record<string, unknown> = {
         union_id: unionId,
         created_by: session.user.id,
-        title,
-        description,
+        title: VOTE_TITLE_PLACEHOLDER,
+        description: VOTE_DESC_PLACEHOLDER,
         vote_type: 'yes_no',
+        title_blob: titleBlob,
+        title_iv: titleIv,
     };
     if (id) insertRow.id = id;
-    if (titleBlob !== undefined) insertRow.title_blob = titleBlob;
-    if (titleIv !== undefined) insertRow.title_iv = titleIv;
-    if (descriptionBlob !== undefined) insertRow.description_blob = descriptionBlob;
-    if (descriptionIv !== undefined) insertRow.description_iv = descriptionIv;
+    if (descriptionBlob !== undefined) {
+        insertRow.description_blob = descriptionBlob;
+        insertRow.description_iv = descriptionIv;
+    }
 
     // 1. Create Vote
     const { data: vote, error } = await supabaseAdmin
