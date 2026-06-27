@@ -3,11 +3,11 @@
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Users, UserPlus, Copy, Link as LinkIcon } from "lucide-react";
+import { Users, UserPlus, Copy, ShieldCheck } from "lucide-react";
 
 import { useState, useEffect } from "react";
 import { getPendingJoinRequestsAction, respondToJoinRequestAction, getUnionMembersAction, promoteMemberAction } from "@/lib/union-actions";
-import { removeMemberAndRotateKey, createSecureInvite } from "@/lib/client-actions/unions";
+import { removeMemberAndRotateKey, createSecureInvite, refreshInviteKey } from "@/lib/client-actions/unions";
 import { fingerprintFromJson } from "@/lib/key-fingerprint";
 import { useUnion } from "@/context/UnionContext";
 import { useAuth } from "@/context/AuthContext";
@@ -23,7 +23,6 @@ export default function MembersPage() {
     const [membersLoading, setMembersLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [respondingTo, setRespondingTo] = useState<string | null>(null);
-    const [generatingLink, setGeneratingLink] = useState(false);
 
     const isAdmin = activeUnion?.role === 'admin';
 
@@ -109,29 +108,9 @@ export default function MembersPage() {
 
     const copyInviteCode = () => {
         if (!activeUnion?.inviteCode) return;
-        navigator.clipboard.writeText(activeUnion.inviteCode);
-        toast.success("Invite code copied to clipboard");
-    };
-
-    const copyInviteLink = () => {
-        if (!activeUnion?.inviteCode) return;
-        const link = `${window.location.origin}/join/${activeUnion.inviteCode}`;
-        navigator.clipboard.writeText(link);
-        toast.success("Invite link copied to clipboard");
-    };
-
-    const generateSecureLink = async () => {
-        if (!activeUnion) return;
-        setGeneratingLink(true);
-        try {
-            const link = await createSecureInvite(activeUnion.id);
-            navigator.clipboard.writeText(link);
-            toast.success("Secure invite link copied to clipboard");
-        } catch {
-            toast.error("Failed to generate secure link");
-        } finally {
-            setGeneratingLink(false);
-        }
+        navigator.clipboard.writeText(activeUnion.inviteCode)
+            .then(() => toast.success("Invite code copied to clipboard"))
+            .catch(() => toast.error("Failed to copy — try selecting and copying manually"));
     };
 
     if (!activeUnion) {
@@ -157,31 +136,30 @@ export default function MembersPage() {
                         <CardTitle className="flex items-center gap-2 text-lg">
                             <UserPlus className="h-5 w-5" /> Invite Members
                         </CardTitle>
-                        <CardDescription>Share the invite code or link with coworkers to grow your union.</CardDescription>
+                        <CardDescription>
+                            Generate a secure invite link to share with coworkers. The link grants
+                            immediate access to encrypted history — share only with people you trust.
+                        </CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-3">
-                        <div className="flex items-center gap-2">
-                            <div className="flex-1 flex items-center gap-2 p-2 bg-muted rounded border font-mono text-sm">
-                                <span className="truncate">{activeUnion.inviteCode}</span>
-                            </div>
-                            <Button variant="outline" size="sm" onClick={copyInviteCode} title="Copy invite code">
-                                <Copy className="h-4 w-4 mr-1" /> Code
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={copyInviteLink} title="Copy invite link">
-                                <LinkIcon className="h-4 w-4 mr-1" /> Link
-                            </Button>
-                        </div>
-                        {isAdmin && (
-                            <div>
-                                <Button variant="outline" size="sm" onClick={generateSecureLink} disabled={generatingLink}>
-                                    {generatingLink ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <LinkIcon className="h-4 w-4 mr-1" />}
-                                    Generate Secure Invite Link
+                    <CardContent className="space-y-4">
+                        <SecureInviteGenerator unionId={activeUnion.id} />
+                        <div>
+                            <label className="block text-xs text-muted-foreground mb-1">
+                                Invite code (advanced)
+                            </label>
+                            <div className="flex items-center gap-2">
+                                <div className="flex-1 flex items-center gap-2 p-2 bg-muted rounded border font-mono text-sm">
+                                    <span className="truncate">{activeUnion.inviteCode}</span>
+                                </div>
+                                <Button variant="outline" size="sm" onClick={copyInviteCode} title="Copy invite code">
+                                    <Copy className="h-4 w-4 mr-1" /> Copy
                                 </Button>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    Secure links grant immediate access to encrypted history. Share only with trusted members.
-                                </p>
                             </div>
-                        )}
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Existing members can paste this in <strong>Unions &rsaquo; Join Union</strong>.
+                            </p>
+                        </div>
+                        <RefreshInviteKeyButton unionId={activeUnion.id} />
                     </CardContent>
                 </Card>
                 )}
@@ -353,5 +331,93 @@ export default function MembersPage() {
                 </Tabs>
             </div>
         </ProtectedRoute>
+    );
+}
+
+function SecureInviteGenerator({ unionId }: { unionId: string }) {
+    const [link, setLink] = useState("");
+    const [loading, setLoading] = useState(false);
+
+    const generate = async () => {
+        setLoading(true);
+        try {
+            const url = await createSecureInvite(unionId);
+            setLink(url);
+        } catch (e) {
+            toast.error("Failed to create link: " + e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (link) {
+        return (
+            <div>
+                <label className="block text-xs text-muted-foreground mb-1">
+                    Secure Invite Link (includes keys)
+                </label>
+                <div className="flex gap-2">
+                    <input
+                        readOnly
+                        value={link}
+                        onFocus={(e) => e.currentTarget.select()}
+                        className="flex-1 bg-background border rounded px-2 py-1.5 text-xs truncate font-mono"
+                    />
+                    <Button
+                        size="sm"
+                        onClick={() => {
+                            navigator.clipboard.writeText(link)
+                                .then(() => toast.success("Link copied!"))
+                                .catch(() => toast.error("Failed to copy — try selecting and copying manually"));
+                        }}
+                    >
+                        <Copy className="h-4 w-4 mr-1" /> Copy
+                    </Button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <Button onClick={generate} disabled={loading} className="w-full">
+            {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
+            Generate Secure Invite Link
+        </Button>
+    );
+}
+
+function RefreshInviteKeyButton({ unionId }: { unionId: string }) {
+    const [loading, setLoading] = useState(false);
+    const [done, setDone] = useState(false);
+
+    const handleRefresh = async () => {
+        setLoading(true);
+        try {
+            await refreshInviteKey(unionId);
+            toast.success("Invite key updated. New members joining with the invite code will receive the encryption key.");
+            setDone(true);
+        } catch (e) {
+            toast.error("Failed to refresh invite key: " + e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (done) {
+        return (
+            <div className="text-xs text-center text-emerald-600 font-medium py-1">
+                Invite key up to date
+            </div>
+        );
+    }
+
+    return (
+        <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className="w-full text-xs text-muted-foreground hover:text-foreground py-1.5 rounded border border-dashed hover:border-solid transition-all flex items-center justify-center gap-1 disabled:opacity-50"
+        >
+            {loading ? "Updating..." : "Refresh Invite Key"}
+        </button>
     );
 }
