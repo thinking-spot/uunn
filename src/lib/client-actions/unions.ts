@@ -161,13 +161,7 @@ export async function getAlliedUnions(unionId: string): Promise<Union[]> {
  * Creates a Secure Invite Link that grants access to union history.
  * Encrypts the Union Key with a temporary "Visit Key".
  */
-export async function createSecureInvite(unionId: string): Promise<string> {
-    // 1. Get the UNWRAPPED union key (we need to fetch it first?)
-    // In our current app flow, we don't store the raw key in memory persistently.
-    // We usually unwrap it when needed.
-    // So we need to fetch our own membership, get the encrypted key, decrypt it with our private key.
-
-    // FETCH OWN MEMBERSHIP (Optimization: Should pass key in if we have it)
+export async function createSecureInvite(unionId: string, label?: string): Promise<string> {
     const unions = await getUserUnionsAction();
     const myMembership = unions.find((u: any) => u.id === unionId);
     if (!myMembership) throw new Error("You are not a member of this union");
@@ -188,7 +182,7 @@ export async function createSecureInvite(unionId: string): Promise<string> {
         unionId,
         encryptedUnionKey,
         JSON.stringify(visitPublicKeyJwk),
-        "server-inferred" // Placeholder, server should ignore or Verify.
+        label ?? "",
     );
 
     if (result.error) throw new Error(result.error);
@@ -197,6 +191,52 @@ export async function createSecureInvite(unionId: string): Promise<string> {
     // Format: https://uunn.io/invite/<inviteId>#<privateKeyBase64>
     const fragment = window.btoa(JSON.stringify(visitPrivateKeyJwk));
     return `${window.location.origin}/invite/${result.inviteId}#${fragment}`;
+}
+
+/**
+ * Generate multiple Secure Invite Links in one call. Reuses the same
+ * unwrapped union key across all invites instead of unwrapping per-invite,
+ * but generates a fresh ephemeral key pair per recipient so each link
+ * is independently revokable once we add revocation, and each link's
+ * URL fragment is unique.
+ */
+export async function createBulkSecureInvites(
+    unionId: string,
+    labels: string[],
+): Promise<{ label: string; url: string }[]> {
+    if (labels.length === 0) return [];
+
+    const unions = await getUserUnionsAction();
+    const myMembership = unions.find((u: any) => u.id === unionId);
+    if (!myMembership) throw new Error("You are not a member of this union");
+
+    const myPrivateKey = await getMyPrivateKey();
+    const unionKey = await unwrapKey(myMembership.encryptionKey, myPrivateKey);
+
+    const out: { label: string; url: string }[] = [];
+    for (const rawLabel of labels) {
+        const label = rawLabel.trim();
+        if (!label) continue;
+        const visitKeyPair = await generateUserKeyPair();
+        const visitPublicKeyJwk = await exportKey(visitKeyPair.publicKey);
+        const visitPrivateKeyJwk = await exportKey(visitKeyPair.privateKey);
+        const encryptedUnionKey = await wrapKey(unionKey, visitKeyPair.publicKey);
+
+        const result = await createInviteAction(
+            unionId,
+            encryptedUnionKey,
+            JSON.stringify(visitPublicKeyJwk),
+            label,
+        );
+        if (result.error) throw new Error(`Failed to create invite for "${label}": ${result.error}`);
+
+        const fragment = window.btoa(JSON.stringify(visitPrivateKeyJwk));
+        out.push({
+            label,
+            url: `${window.location.origin}/invite/${result.inviteId}#${fragment}`,
+        });
+    }
+    return out;
 }
 
 /**

@@ -281,28 +281,18 @@ export async function createInviteAction(unionId: string, encryptedUnionKey: str
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
-    // We store this as a specialized "Invite" record?
-    // Actually we implemented a `UnionInvites` table? Or `UnionJoinRequests`?
-    // "Secure Invite" usually means we create a link with a pre-encrypted key.
-    // Let's check `JoinRequests`... no that's for asking.
-    // We didn't strictly add `UnionInvites` table in the V1 schema?
-    // We have `UnionJoinRequests`.
-
-    // IF we are missing the table, we might need to add it or skip this feature.
-    // Looking at `client-actions/unions.ts`, `createSecureInvite` relies on it.
-    // The previous error didn't complain about table missing, just the action function.
-    // Let's implement a dummy or use a specialized table if we have one.
-    // Checking schema... `task.md` said "Implement Invite Flow with History Access" was done.
-    // I previously had `createInviteAction` working.
-    // It likely used `UnionInvites` table.
+    // Bound the label so it can't be used to smuggle large payloads into the
+    // table. Empty label is fine — it just means the admin didn't tag it.
+    const trimmedLabel = (recipientLabel ?? '').toString().trim().slice(0, 200) || null;
 
     const { data, error } = await supabaseAdmin
-        .from('UnionInvites') // Assuming this table exists from Phase 2
+        .from('UnionInvites')
         .insert({
             union_id: unionId,
             created_by: session.user.id,
             encrypted_union_key: encryptedUnionKey,
-            invite_public_key: recipientPublicKey
+            invite_public_key: recipientPublicKey,
+            label: trimmedLabel,
         })
         .select()
         .single();
@@ -312,6 +302,55 @@ export async function createInviteAction(unionId: string, encryptedUnionKey: str
         return { error: "Failed" };
     }
     return { inviteId: data.id };
+}
+
+/**
+ * Admin-only: list the Secure Invite Links issued for a union, plus their
+ * status (pending / joined / expired). Used by the Members → Invite
+ * Members card to give admins a running ledger of who they invited and
+ * which links have been redeemed.
+ */
+export type IssuedInvite = {
+    id: string;
+    label: string | null;
+    createdAt: string;
+    expiresAt: string | null;
+    consumedAt: string | null;
+    consumedByUsername: string | null;
+    status: 'pending' | 'joined' | 'expired';
+};
+
+export async function getUnionInvitesAction(
+    unionId: string,
+): Promise<{ invites?: IssuedInvite[]; error?: string }> {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+    if (!await verifyAdmin(unionId, session.user.id)) {
+        return { error: "Not authorized — admin only" };
+    }
+
+    const { data, error } = await supabaseAdmin
+        .from('UnionInvites')
+        .select('id, label, created_at, expires_at, consumed_at, consumer:Users!consumed_by(username)')
+        .eq('union_id', unionId)
+        .order('created_at', { ascending: false });
+    if (error) return { error: "Failed to load invites" };
+
+    const now = Date.now();
+    const invites: IssuedInvite[] = (data || []).map((r: any) => {
+        const expired = !!r.expires_at && new Date(r.expires_at).getTime() < now;
+        const consumed = !!r.consumed_at;
+        return {
+            id: r.id,
+            label: r.label ?? null,
+            createdAt: r.created_at,
+            expiresAt: r.expires_at ?? null,
+            consumedAt: r.consumed_at ?? null,
+            consumedByUsername: r.consumer?.username ?? null,
+            status: consumed ? 'joined' : expired ? 'expired' : 'pending',
+        };
+    });
+    return { invites };
 }
 
 /**
@@ -336,12 +375,19 @@ export async function joinViaSecureInviteAction(inviteId: string, encryptedShare
 
     const { data: invite, error: inviteError } = await supabaseAdmin
         .from('UnionInvites')
-        .select('union_id, expires_at')
+        .select('union_id, expires_at, consumed_by, consumed_at')
         .eq('id', inviteId)
         .single();
     if (inviteError || !invite) return { error: "Invalid invite" };
     if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
         return { error: "Invite expired" };
+    }
+    // Single-use: a Secure Invite Link is bound to whoever redeemed it first.
+    // If the same user is re-clicking the link (already a member), surface
+    // alreadyMember below. If a *different* user tries to reuse a consumed
+    // invite, refuse.
+    if (invite.consumed_by && invite.consumed_by !== session.user.id) {
+        return { error: "This invite link has already been used." };
     }
     const unionId = invite.union_id;
 
@@ -365,6 +411,16 @@ export async function joinViaSecureInviteAction(inviteId: string, encryptedShare
         logError('joinViaSecureInvite insert failed', error);
         return { error: "Failed to join union" };
     }
+
+    // Mark the invite as consumed. Best-effort: a failed mark doesn't
+    // un-do the join — worst case the admin sees the invite as "pending"
+    // in their ledger even though the member did join.
+    await supabaseAdmin
+        .from('UnionInvites')
+        .update({ consumed_by: session.user.id, consumed_at: new Date().toISOString() })
+        .eq('id', inviteId)
+        .is('consumed_by', null); // Guard against double-consumption races.
+
     await recordActivity({
         unionId,
         actorId: session.user.id,
@@ -918,6 +974,61 @@ export async function respondToAllianceRequestAction(requestId: string, accept: 
             kind: 'alliance_accepted',
             targetId: responderUnionId,
             targetLabel: byId.get(responderUnionId) ?? null,
+        }),
+    ]);
+
+    return { success: true };
+}
+
+/**
+ * End an active alliance between two unions. Either side's admins may
+ * dissolve it. CASCADE on UnionAlliances → AllianceKeys + AllianceMessages
+ * wipes the encrypted channel content along with the alliance row, so
+ * dissolving is irreversible (the only way to restore would be to start
+ * a new alliance + redistribute keys).
+ */
+export async function dissolveAllianceAction(allianceId: string) {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+
+    const idV = validate(uuid, allianceId);
+    if ('error' in idV) return { error: idV.error };
+
+    const { data: alliance } = await supabaseAdmin
+        .from('UnionAlliances')
+        .select('id, union_a_id, union_b_id, union_a:Unions!union_a_id(name), union_b:Unions!union_b_id(name)')
+        .eq('id', allianceId)
+        .single();
+    if (!alliance) return { error: "Alliance not found" };
+
+    // Caller must be admin of at least one side.
+    const sideA = await verifyAdmin(alliance.union_a_id, session.user.id);
+    const sideB = sideA ? false : await verifyAdmin(alliance.union_b_id, session.user.id);
+    if (!sideA && !sideB) return { error: "Not authorized — admin of either allied union only" };
+
+    const { error } = await supabaseAdmin
+        .from('UnionAlliances')
+        .delete()
+        .eq('id', allianceId);
+    if (error) return { error: "Failed to dissolve alliance" };
+
+    // Activity log on both sides — each one sees the other's name as the target.
+    const aName = (alliance.union_a as any)?.name ?? null;
+    const bName = (alliance.union_b as any)?.name ?? null;
+    await Promise.all([
+        recordActivity({
+            unionId: alliance.union_a_id,
+            actorId: sideA ? session.user.id : null,
+            kind: 'alliance_dissolved',
+            targetId: alliance.union_b_id,
+            targetLabel: bName,
+        }),
+        recordActivity({
+            unionId: alliance.union_b_id,
+            actorId: sideB ? session.user.id : null,
+            kind: 'alliance_dissolved',
+            targetId: alliance.union_a_id,
+            targetLabel: aName,
         }),
     ]);
 
