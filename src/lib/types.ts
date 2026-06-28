@@ -54,6 +54,8 @@ export interface VoteData {
     created_at: string;
     created_by: string;
     created_by_name?: string;
+    closes_at?: string | null;
+    quorum_percent?: number | null;
     my_vote?: string;
     attached_documents?: { id: string; title: string }[];
     results: {
@@ -96,6 +98,8 @@ export interface VoteRawData {
     created_at: string;
     created_by: string;
     created_by_name: string;
+    closes_at?: string | null;
+    quorum_percent?: number | null;
     attached_documents: VoteAttachedDocument[];
     responses: VoteResponseRaw[];
 }

@@ -14,10 +14,26 @@ import { Button } from "@/components/ui/button";
 import { Plus, CheckCircle2, XCircle, Ban, Loader2, FileText, Paperclip, Lock } from "lucide-react";
 import { toast } from "sonner";
 
+// Friendly relative time for a future ISO timestamp ("in 3 hours", "in 2 days").
+// Returns "soon" if it's within a minute. Past timestamps return "—".
+function timeUntil(iso: string): string {
+    const diff = new Date(iso).getTime() - Date.now();
+    if (diff <= 60_000) return diff <= 0 ? "—" : "soon";
+    const minutes = Math.round(diff / 60_000);
+    if (minutes < 60) return `in ${minutes} min`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 48) return `in ${hours} hour${hours === 1 ? '' : 's'}`;
+    const days = Math.round(hours / 24);
+    if (days < 14) return `in ${days} day${days === 1 ? '' : 's'}`;
+    const weeks = Math.round(days / 7);
+    return `in ${weeks} week${weeks === 1 ? '' : 's'}`;
+}
+
 export default function VotesPage() {
     const { activeUnion } = useUnion();
     const { user } = useAuth();
     const [votes, setVotes] = useState<VoteData[]>([]);
+    const [eligibleVoters, setEligibleVoters] = useState(0);
     const [loading, setLoading] = useState(true);
 
     // Create Form
@@ -25,6 +41,8 @@ export default function VotesPage() {
     const [creating, setCreating] = useState(false);
     const [newTitle, setNewTitle] = useState("");
     const [newDesc, setNewDesc] = useState("");
+    const [newClosesAt, setNewClosesAt] = useState("");
+    const [newQuorum, setNewQuorum] = useState("");
     const [availableDocs, setAvailableDocs] = useState<Document[]>([]);
     const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
 
@@ -49,12 +67,13 @@ export default function VotesPage() {
     const loadVotes = async () => {
         if (!activeUnion || !user) return;
         setLoading(true);
-        const { votes: data } = await getDecryptedUnionVotes(
+        const { votes: data, eligibleVoters: count } = await getDecryptedUnionVotes(
             activeUnion.id,
             activeUnion.encryptionKey,
             user.uid,
         );
         if (data) setVotes(data);
+        if (typeof count === 'number') setEligibleVoters(count);
         setLoading(false);
     };
 
@@ -62,18 +81,25 @@ export default function VotesPage() {
         if (!activeUnion || !newTitle) return;
         setCreating(true);
         try {
+            // datetime-local emits a local-time string like "2026-07-01T18:30"; pass it
+            // to the Date ctor (treated as local) and convert to ISO server-side.
+            const closesAtIso = newClosesAt ? new Date(newClosesAt).toISOString() : null;
+            const quorumPercent = newQuorum.trim() ? Number(newQuorum) : null;
             const { error } = await createEncryptedVote(
                 activeUnion.id,
                 newTitle,
                 newDesc,
                 selectedDocs,
                 activeUnion.encryptionKey,
+                { closesAt: closesAtIso, quorumPercent },
             );
             if (error) toast.error(error);
             else {
                 setIsCreating(false);
                 setNewTitle("");
                 setNewDesc("");
+                setNewClosesAt("");
+                setNewQuorum("");
                 setSelectedDocs([]);
                 loadVotes();
             }
@@ -143,20 +169,58 @@ export default function VotesPage() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium mb-1">Title</label>
+                            <label htmlFor="new-vote-title" className="block text-sm font-medium mb-1">Title</label>
                             <input
+                                id="new-vote-title"
                                 placeholder="Poll Title (e.g. Strike Authorization)"
                                 className="w-full p-2 border rounded"
                                 value={newTitle} onChange={e => setNewTitle(e.target.value)}
+                                autoFocus
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium mb-1">Description</label>
+                            <label htmlFor="new-vote-desc" className="block text-sm font-medium mb-1">Description</label>
                             <textarea
+                                id="new-vote-desc"
                                 placeholder="Description / Details..."
                                 className="w-full p-2 border rounded min-h-[80px] resize-y"
                                 value={newDesc} onChange={e => setNewDesc(e.target.value)}
                             />
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                                <label htmlFor="new-vote-closes" className="block text-sm font-medium mb-1">
+                                    Closes at <span className="text-muted-foreground font-normal">(optional)</span>
+                                </label>
+                                <input
+                                    id="new-vote-closes"
+                                    type="datetime-local"
+                                    className="w-full p-2 border rounded"
+                                    value={newClosesAt}
+                                    onChange={e => setNewClosesAt(e.target.value)}
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Leave blank to keep the vote open until you close it manually.
+                                </p>
+                            </div>
+                            <div>
+                                <label htmlFor="new-vote-quorum" className="block text-sm font-medium mb-1">
+                                    Quorum % <span className="text-muted-foreground font-normal">(optional)</span>
+                                </label>
+                                <input
+                                    id="new-vote-quorum"
+                                    type="number"
+                                    min={1}
+                                    max={100}
+                                    placeholder="e.g. 50"
+                                    className="w-full p-2 border rounded"
+                                    value={newQuorum}
+                                    onChange={e => setNewQuorum(e.target.value)}
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Percent of the {eligibleVoters || 0} members who must vote for the result to count.
+                                </p>
+                            </div>
                         </div>
                         <div>
                             <label className="block text-sm font-medium mb-2">Attach Documents</label>
@@ -217,11 +281,22 @@ export default function VotesPage() {
                 )}
 
                 {votes.map(vote => {
-                    const isOpen = vote.status === 'open';
+                    // A vote is treated as effectively closed if either:
+                    //   - the creator hit "Close Vote" (status === 'closed'), or
+                    //   - it had a closes_at that's already passed.
+                    // The server keeps status='open' for the second case until
+                    // someone touches it; the client just renders it as closed.
+                    const expired = !!vote.closes_at && new Date(vote.closes_at).getTime() <= Date.now();
+                    const isOpen = vote.status === 'open' && !expired;
                     const isCreator = user?.uid === vote.created_by;
                     const canVote = isOpen && !vote.my_vote;
                     const isCasting = castingVote === vote.id;
                     const isClosing = closingVote === vote.id;
+                    const quorumNeededVotes = vote.quorum_percent && eligibleVoters
+                        ? Math.ceil((vote.quorum_percent / 100) * eligibleVoters)
+                        : null;
+                    const quorumMet = quorumNeededVotes !== null && vote.results.total >= quorumNeededVotes;
+                    const unvoted = Math.max(0, eligibleVoters - vote.results.total);
 
                     return (
                         <Card key={vote.id} className="overflow-hidden">
@@ -235,6 +310,33 @@ export default function VotesPage() {
                                         <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
                                             <span>Created by {vote.created_by_name || 'Unknown'}</span>
                                             <span>{new Date(vote.created_at).toLocaleDateString()}</span>
+                                        </div>
+
+                                        {/* Participation strip: turnout, time-remaining, quorum status. */}
+                                        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                                            {eligibleVoters > 0 ? (
+                                                <span className="text-muted-foreground">
+                                                    <strong className="text-foreground">{vote.results.total}</strong> of {eligibleVoters} {eligibleVoters === 1 ? 'member' : 'members'} voted
+                                                    {isOpen && unvoted > 0 && (
+                                                        <> · {unvoted} haven&apos;t yet</>
+                                                    )}
+                                                </span>
+                                            ) : (
+                                                <span className="text-muted-foreground">{vote.results.total} vote{vote.results.total === 1 ? '' : 's'}</span>
+                                            )}
+                                            {isOpen && vote.closes_at && (
+                                                <span className="text-muted-foreground">
+                                                    · Closes {timeUntil(vote.closes_at)}
+                                                </span>
+                                            )}
+                                            {expired && (
+                                                <span className="text-muted-foreground">· Closed {new Date(vote.closes_at!).toLocaleString()}</span>
+                                            )}
+                                            {vote.quorum_percent && quorumNeededVotes !== null && (
+                                                <span className={quorumMet ? 'text-emerald-700 font-medium' : 'text-amber-700 font-medium'}>
+                                                    · Quorum {vote.quorum_percent}% ({quorumNeededVotes} {quorumNeededVotes === 1 ? 'vote' : 'votes'}) {quorumMet ? 'met' : 'not yet met'}
+                                                </span>
+                                            )}
                                         </div>
 
                                         {vote.attached_documents && vote.attached_documents.length > 0 && (
@@ -264,7 +366,7 @@ export default function VotesPage() {
                                             </Button>
                                         )}
                                         <div className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${isOpen ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
-                                            {vote.status.toUpperCase()}
+                                            {isOpen ? 'OPEN' : 'CLOSED'}
                                         </div>
                                     </div>
                                 </div>

@@ -14,6 +14,7 @@ export async function createEncryptedVote(
     description: string,
     documentIds: string[],
     encryptedSharedKey: string,
+    options?: { closesAt?: string | null; quorumPercent?: number | null },
 ): Promise<{ vote?: { id: string }; error?: string }> {
     const id = crypto.randomUUID();
     let unionKey: CryptoKey;
@@ -36,6 +37,8 @@ export async function createEncryptedVote(
         id,
         descEnc?.cipherText,
         descEnc?.iv,
+        options?.closesAt ?? null,
+        options?.quorumPercent ?? null,
     );
 
     if (result.error) return { error: result.error };
@@ -82,7 +85,7 @@ export async function getDecryptedUnionVotes(
     unionId: string,
     encryptedSharedKey: string,
     myUserId: string,
-): Promise<{ votes?: VoteData[]; error?: string }> {
+): Promise<{ votes?: VoteData[]; eligibleVoters?: number; error?: string }> {
     const result = await getUnionVotesAction(unionId);
     if (result.error || !result.votes) return { error: result.error || "Failed to load votes" };
 
@@ -159,6 +162,8 @@ export async function getDecryptedUnionVotes(
                 created_at: raw.created_at,
                 created_by: raw.created_by,
                 created_by_name: raw.created_by_name,
+                closes_at: raw.closes_at ?? null,
+                quorum_percent: raw.quorum_percent ?? null,
                 attached_documents,
                 my_vote: myVote,
                 results: counts,
@@ -166,5 +171,5 @@ export async function getDecryptedUnionVotes(
         }),
     );
 
-    return { votes };
+    return { votes, eligibleVoters: result.eligibleVoters };
 }

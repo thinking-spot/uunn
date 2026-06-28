@@ -24,6 +24,8 @@ export async function createVoteAction(
     id?: string,
     descriptionBlob?: string,
     descriptionIv?: string,
+    closesAt?: string | null,
+    quorumPercent?: number | null,
 ) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
@@ -54,6 +56,26 @@ export async function createVoteAction(
         return { error: "Not authorized — members only" };
     }
 
+    // Reject obviously bad inputs early. closes_at must be a real future
+    // timestamp (a past closes_at would create a vote that's already "expired"
+    // on open — almost certainly a UX mistake, not intent). quorum_percent
+    // is bounded by the column's CHECK constraint too, but reject earlier
+    // for a friendlier error.
+    let normalizedClosesAt: string | null = null;
+    if (closesAt) {
+        const t = new Date(closesAt);
+        if (Number.isNaN(t.getTime())) return { error: "Invalid close date" };
+        if (t.getTime() < Date.now() + 60_000) return { error: "Close date must be at least a minute in the future." };
+        normalizedClosesAt = t.toISOString();
+    }
+    let normalizedQuorum: number | null = null;
+    if (quorumPercent !== undefined && quorumPercent !== null) {
+        if (!Number.isFinite(quorumPercent) || quorumPercent < 1 || quorumPercent > 100) {
+            return { error: "Quorum must be between 1 and 100." };
+        }
+        normalizedQuorum = Math.round(quorumPercent);
+    }
+
     const insertRow: Record<string, unknown> = {
         union_id: unionId,
         created_by: session.user.id,
@@ -62,6 +84,8 @@ export async function createVoteAction(
         vote_type: 'yes_no',
         title_blob: titleBlob,
         title_iv: titleIv,
+        closes_at: normalizedClosesAt,
+        quorum_percent: normalizedQuorum,
     };
     if (id) insertRow.id = id;
     if (descriptionBlob !== undefined) {
@@ -121,7 +145,7 @@ export async function createVoteAction(
  * Legacy plaintext rows (created before migration 0011) carry a populated
  * `choice` column and a NULL blob/iv; the client treats them transparently.
  */
-export async function getUnionVotesAction(unionId: string): Promise<{ votes?: VoteRawData[], error?: string }> {
+export async function getUnionVotesAction(unionId: string): Promise<{ votes?: VoteRawData[]; eligibleVoters?: number; error?: string }> {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
 
@@ -129,17 +153,26 @@ export async function getUnionVotesAction(unionId: string): Promise<{ votes?: Vo
         return { error: "Not authorized — members only" };
     }
 
-    const { data: votes, error } = await supabaseAdmin
-        .from('Votes')
-        .select(`
-            *,
-            creator:Users!created_by (username),
-            attachments:VoteAttachments (
-                document:Documents (id, title, title_blob, title_iv, union_id)
-            )
-        `)
-        .eq('union_id', unionId)
-        .order('created_at', { ascending: false });
+    const [votesResult, memberCountResult] = await Promise.all([
+        supabaseAdmin
+            .from('Votes')
+            .select(`
+                *,
+                creator:Users!created_by (username),
+                attachments:VoteAttachments (
+                    document:Documents (id, title, title_blob, title_iv, union_id)
+                )
+            `)
+            .eq('union_id', unionId)
+            .order('created_at', { ascending: false }),
+        supabaseAdmin
+            .from('Memberships')
+            .select('*', { count: 'exact', head: true })
+            .eq('union_id', unionId),
+    ]);
+
+    const { data: votes, error } = votesResult;
+    const eligibleVoters = memberCountResult.count || 0;
 
     if (error) return { error: "Failed to fetch votes" };
 
@@ -178,6 +211,8 @@ export async function getUnionVotesAction(unionId: string): Promise<{ votes?: Vo
         created_at: v.created_at,
         created_by: v.created_by,
         created_by_name: v.creator?.username || 'Unknown',
+        closes_at: v.closes_at ?? null,
+        quorum_percent: v.quorum_percent ?? null,
         attached_documents: (v.attachments || [])
             .map((a: any) => a.document)
             .filter(Boolean)
@@ -191,7 +226,7 @@ export async function getUnionVotesAction(unionId: string): Promise<{ votes?: Vo
         responses: responsesByVote.get(v.id) || [],
     }));
 
-    return { votes: finalVotes };
+    return { votes: finalVotes, eligibleVoters };
 }
 
 /**
