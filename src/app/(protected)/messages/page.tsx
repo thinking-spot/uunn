@@ -9,6 +9,7 @@ import { getUserUnions } from "@/lib/client-actions/unions";
 import { useMessages } from "@/hooks/useMessages";
 import { useAllianceMessages } from "@/hooks/useAllianceMessages";
 import { getMyAlliancesAction } from "@/lib/alliance-actions";
+import { getUnreadCountsAction, markChannelReadAction } from "@/lib/message-actions";
 import { unwrapKey, encryptContent, decryptContent } from "@/lib/crypto";
 import { aadFor } from "@/lib/aad";
 import { getMyPrivateKey } from "@/lib/client-crypto";
@@ -24,7 +25,10 @@ export default function MessagesPage() {
     const [textInput, setTextInput] = useState("");
     const [key, setKey] = useState<CryptoKey | null>(null);
     const [mobileChannelOpen, setMobileChannelOpen] = useState(false);
+    const [unreadByChannel, setUnreadByChannel] = useState<Record<string, number>>({});
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    const channelKey = (type: 'union' | 'alliance', id: string) => `${type}:${id}`;
 
     // Hooks for both channel types — only one will be active at a time
     const isAlliance = activeChannel?.type === "alliance";
@@ -72,6 +76,34 @@ export default function MessagesPage() {
 
         loadChannels();
     }, [user]);
+
+    // Load + poll unread counts so the sidebar badges drain when the user
+    // opens a channel and refill when peers send while they're elsewhere.
+    useEffect(() => {
+        if (!user) return;
+        let cancelled = false;
+        const load = async () => {
+            const counts = await getUnreadCountsAction();
+            if (cancelled) return;
+            const flat: Record<string, number> = {};
+            for (const [id, n] of Object.entries(counts.unions)) flat[channelKey('union', id)] = n;
+            for (const [id, n] of Object.entries(counts.alliances)) flat[channelKey('alliance', id)] = n;
+            setUnreadByChannel(flat);
+        };
+        load();
+        const t = setInterval(load, 30_000);
+        return () => { cancelled = true; clearInterval(t); };
+    }, [user]);
+
+    // Mark the active channel read on open / when new messages arrive while
+    // the user is looking at it. Zero out the local badge immediately so
+    // there's no perceptible lag waiting on the server round-trip.
+    useEffect(() => {
+        if (!activeChannel) return;
+        const k = channelKey(activeChannel.type, activeChannel.id);
+        setUnreadByChannel(prev => (prev[k] ? { ...prev, [k]: 0 } : prev));
+        markChannelReadAction(activeChannel.type, activeChannel.id).catch(() => { /* silent */ });
+    }, [activeChannel, rawMessages.length]);
 
     // 2. Import Key when active channel changes
     useEffect(() => {
@@ -179,34 +211,44 @@ export default function MessagesPage() {
                             <MessageSquare className="h-4 w-4 text-muted-foreground" />
                         </div>
                         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                            {channels.map(ch => (
-                                <button
-                                    key={`${ch.type}-${ch.id}`}
-                                    onClick={() => setActiveChannel(ch)}
-                                    className={cn(
-                                        "w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-colors",
-                                        activeChannel?.id === ch.id && activeChannel?.type === ch.type
-                                            ? "bg-accent text-accent-foreground"
-                                            : "hover:bg-muted"
-                                    )}
-                                >
-                                    <div className={cn(
-                                        "h-10 w-10 rounded-full flex items-center justify-center font-bold shrink-0",
-                                        ch.type === "alliance"
-                                            ? "bg-emerald-100 text-emerald-700"
-                                            : "bg-primary/10 text-primary"
-                                    )}>
-                                        {ch.type === "alliance"
-                                            ? <ArrowRightLeft className="h-5 w-5" />
-                                            : ch.name.substring(0, 2).toUpperCase()
-                                        }
-                                    </div>
-                                    <div className="overflow-hidden">
-                                        <div className="font-medium truncate">{ch.name}</div>
-                                        <div className="text-xs text-muted-foreground truncate">{ch.subtitle}</div>
-                                    </div>
-                                </button>
-                            ))}
+                            {channels.map(ch => {
+                                const isActive = activeChannel?.id === ch.id && activeChannel?.type === ch.type;
+                                const unread = unreadByChannel[channelKey(ch.type, ch.id)] || 0;
+                                return (
+                                    <button
+                                        key={`${ch.type}-${ch.id}`}
+                                        onClick={() => setActiveChannel(ch)}
+                                        className={cn(
+                                            "w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-colors",
+                                            isActive ? "bg-accent text-accent-foreground" : "hover:bg-muted",
+                                        )}
+                                        aria-label={unread > 0 ? `${ch.name} (${unread} unread)` : ch.name}
+                                    >
+                                        <div className={cn(
+                                            "h-10 w-10 rounded-full flex items-center justify-center font-bold shrink-0",
+                                            ch.type === "alliance"
+                                                ? "bg-emerald-100 text-emerald-700"
+                                                : "bg-primary/10 text-primary"
+                                        )}>
+                                            {ch.type === "alliance"
+                                                ? <ArrowRightLeft className="h-5 w-5" />
+                                                : ch.name.substring(0, 2).toUpperCase()
+                                            }
+                                        </div>
+                                        <div className="overflow-hidden flex-1 min-w-0">
+                                            <div className={cn("truncate", unread > 0 && !isActive ? "font-semibold" : "font-medium")}>
+                                                {ch.name}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground truncate">{ch.subtitle}</div>
+                                        </div>
+                                        {unread > 0 && !isActive && (
+                                            <span className="shrink-0 ml-2 min-w-[1.25rem] h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold inline-flex items-center justify-center">
+                                                {unread > 99 ? '99+' : unread}
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
 
