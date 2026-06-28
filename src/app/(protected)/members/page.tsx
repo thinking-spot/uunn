@@ -23,8 +23,13 @@ export default function MembersPage() {
     const [membersLoading, setMembersLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [respondingTo, setRespondingTo] = useState<string | null>(null);
+    const [memberQuery, setMemberQuery] = useState("");
 
     const isAdmin = activeUnion?.role === 'admin';
+
+    const filteredMembers = memberQuery.trim()
+        ? members.filter(m => m.username?.toLowerCase().includes(memberQuery.trim().toLowerCase()))
+        : members;
 
     useEffect(() => {
         if (activeUnion) {
@@ -184,25 +189,39 @@ export default function MembersPage() {
                     </TabsList>
 
                     <TabsContent value="list">
+                        {!membersLoading && members.length > 8 && (
+                            <div className="mb-3">
+                                <input
+                                    type="search"
+                                    value={memberQuery}
+                                    onChange={(e) => setMemberQuery(e.target.value)}
+                                    placeholder={`Filter ${members.length} members by username…`}
+                                    aria-label="Filter members"
+                                    className="flex h-9 w-full sm:w-72 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                />
+                            </div>
+                        )}
                         <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
                             {membersLoading ? (
                                 <div className="flex items-center justify-center p-12">
                                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                                 </div>
-                            ) : members.length === 0 ? (
-                                <div className="p-8 text-center text-muted-foreground">No members found.</div>
+                            ) : filteredMembers.length === 0 ? (
+                                <div className="p-8 text-center text-muted-foreground">
+                                    {memberQuery.trim() ? `No members match "${memberQuery}".` : 'No members found.'}
+                                </div>
                             ) : (
                                 <table className="w-full">
                                     <thead>
                                         <tr className="border-b text-left text-sm text-muted-foreground">
-                                            <th className="p-4 font-medium">Username</th>
-                                            <th className="p-4 font-medium">Role</th>
-                                            <th className="p-4 font-medium hidden md:table-cell">Joined</th>
-                                            {isAdmin && <th className="p-4 font-medium text-right">Actions</th>}
+                                            <th scope="col" className="p-4 font-medium">Username</th>
+                                            <th scope="col" className="p-4 font-medium">Role</th>
+                                            <th scope="col" className="p-4 font-medium hidden md:table-cell">Joined</th>
+                                            {isAdmin && <th scope="col" className="p-4 font-medium text-right">Actions</th>}
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {members.map((member: any) => {
+                                        {filteredMembers.map((member: any) => {
                                             const isPromoting = actionLoading === member.id + '-promote';
                                             const isRemoving = actionLoading === member.id + '-remove';
                                             const isSelf = member.id === user?.uid;
@@ -250,7 +269,8 @@ export default function MembersPage() {
                                                                             variant="ghost"
                                                                             onClick={() => handlePromote(member.id, member.username)}
                                                                             disabled={isPromoting}
-                                                                            title="Promote to admin"
+                                                                            title={`Promote ${member.username} to admin`}
+                                                                            aria-label={`Promote ${member.username} to admin`}
                                                                         >
                                                                             {isPromoting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldPlus className="h-4 w-4" />}
                                                                         </Button>
@@ -261,7 +281,8 @@ export default function MembersPage() {
                                                                         className="text-destructive hover:text-destructive"
                                                                         onClick={() => handleRemove(member.id, member.username)}
                                                                         disabled={isRemoving}
-                                                                        title="Remove member"
+                                                                        title={`Remove ${member.username}`}
+                                                                        aria-label={`Remove ${member.username}`}
                                                                     >
                                                                         {isRemoving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserMinus className="h-4 w-4" />}
                                                                     </Button>

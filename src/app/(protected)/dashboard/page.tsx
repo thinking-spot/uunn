@@ -171,7 +171,12 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-4">
                 {stats?.recentDocs.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No documents yet.</p>
+                  <div className="space-y-2 text-sm">
+                    <p className="text-muted-foreground">No documents yet.</p>
+                    <Link href="/documents" className="text-primary hover:underline inline-block">
+                      Draft your first document →
+                    </Link>
+                  </div>
                 ) : (
                   stats?.recentDocs.map(doc => (
                     <div key={doc.id} className="flex items-center justify-between border-b last:border-0 pb-2 last:pb-0">

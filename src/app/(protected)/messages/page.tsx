@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { Send, ShieldCheck, Lock, Loader2, MessageSquare, ArrowRightLeft, ChevronDown } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { getUserUnions } from "@/lib/client-actions/unions";
@@ -157,10 +159,15 @@ export default function MessagesPage() {
         <ProtectedRoute>
             {!hasChannels ? (
                 <div className="flex h-full items-center justify-center p-8 text-center">
-                    <div>
+                    <div className="max-w-sm">
                         <MessageSquare className="mx-auto h-12 w-12 text-muted-foreground/50 mb-4" />
                         <h1 className="text-2xl font-bold">Secure Messaging</h1>
-                        <p className="text-muted-foreground mt-2">Join a union to start chatting securely.</p>
+                        <p className="text-muted-foreground mt-2 mb-4">
+                            Messages are end-to-end encrypted within a union. You need to join one first.
+                        </p>
+                        <Link href="/dashboard">
+                            <Button>Find or create a union</Button>
+                        </Link>
                     </div>
                 </div>
             ) : (

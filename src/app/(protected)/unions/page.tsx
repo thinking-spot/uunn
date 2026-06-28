@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { Copy, Plus, Users, ArrowRightLeft, ShieldCheck } from "lucide-react";
+import { Copy, Plus, Users, ArrowRightLeft, ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -232,31 +232,61 @@ export default function UnionsPage() {
                     </TabsContent>
 
                     <TabsContent value="create">
-                        {/* ... existing create content ... */}
                         <div className="max-w-md mx-auto mt-12 p-6 border rounded-xl bg-card">
                             <h3 className="text-lg font-semibold mb-4">Create a New Union</h3>
                             <div className="space-y-4">
-                                <input
-                                    placeholder="Union Name"
-                                    className="w-full p-2 border rounded-md"
-                                    value={createName}
-                                    onChange={(e) => setCreateName(e.target.value)}
-                                />
-                                <input
-                                    placeholder="Location (optional, e.g. Springfield)"
-                                    className="w-full p-2 border rounded-md"
-                                    value={createLocation}
-                                    onChange={(e) => setCreateLocation(e.target.value)}
-                                />
-                                <textarea
-                                    placeholder="Description (optional)"
-                                    className="w-full p-2 border rounded-md min-h-[80px]"
-                                    value={createDescription}
-                                    onChange={(e) => setCreateDescription(e.target.value)}
-                                />
+                                <div>
+                                    <label htmlFor="create-name" className="text-sm font-medium block mb-1">
+                                        Union name
+                                    </label>
+                                    <input
+                                        id="create-name"
+                                        placeholder="e.g. Acme Workers United"
+                                        className="w-full p-2 border rounded-md"
+                                        maxLength={200}
+                                        value={createName}
+                                        onChange={(e) => setCreateName(e.target.value)}
+                                        aria-describedby="create-name-help"
+                                    />
+                                    <p id="create-name-help" className="text-xs text-muted-foreground mt-1">
+                                        {createName.length > 0
+                                            ? `${createName.length}/200 characters`
+                                            : 'Required. Visible to other members.'}
+                                    </p>
+                                </div>
+                                <div>
+                                    <label htmlFor="create-location" className="text-sm font-medium block mb-1">
+                                        Location <span className="text-muted-foreground font-normal">(optional)</span>
+                                    </label>
+                                    <input
+                                        id="create-location"
+                                        placeholder="e.g. Springfield, MO"
+                                        className="w-full p-2 border rounded-md"
+                                        maxLength={200}
+                                        value={createLocation}
+                                        onChange={(e) => setCreateLocation(e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="create-description" className="text-sm font-medium block mb-1">
+                                        Description <span className="text-muted-foreground font-normal">(optional)</span>
+                                    </label>
+                                    <textarea
+                                        id="create-description"
+                                        placeholder="What is this union organizing for?"
+                                        className="w-full p-2 border rounded-md min-h-[80px]"
+                                        maxLength={2000}
+                                        value={createDescription}
+                                        onChange={(e) => setCreateDescription(e.target.value)}
+                                        aria-describedby="create-desc-help"
+                                    />
+                                    <p id="create-desc-help" className="text-xs text-muted-foreground mt-1">
+                                        {createDescription.length}/2000 characters.
+                                    </p>
+                                </div>
                                 <button
                                     onClick={handleCreate}
-                                    disabled={actionLoading || !createName}
+                                    disabled={actionLoading || !createName.trim()}
                                     className="w-full bg-primary text-primary-foreground py-2 rounded-md font-medium hover:bg-primary/90 disabled:opacity-50"
                                 >
                                     {actionLoading ? "Creating..." : "Create Union"}
@@ -393,20 +423,11 @@ export default function UnionsPage() {
                             ) : (
                                 <div className="grid gap-4 md:grid-cols-2">
                                     {alliedUnions.map(ally => (
-                                        <div key={ally.id} className="flex items-center justify-between p-4 border rounded-lg bg-card">
-                                            <div className="flex items-center gap-3">
-                                                <div className="h-10 w-10 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold">
-                                                    {ally.name.substring(0, 2).toUpperCase()}
-                                                </div>
-                                                <div>
-                                                    <div className="font-medium">{ally.name}</div>
-                                                    <div className="text-xs text-muted-foreground">Alliance Active</div>
-                                                </div>
-                                            </div>
-                                            <div className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded-full font-medium">
-                                                Partners
-                                            </div>
-                                        </div>
+                                        <AlliedUnionCard
+                                            key={ally.id}
+                                            ally={ally}
+                                            canRepair={activeUnion?.role === 'admin'}
+                                        />
                                     ))}
                                 </div>
                             )}
@@ -415,6 +436,66 @@ export default function UnionsPage() {
                 </Tabs>
             </div>
         </ProtectedRoute>
+    );
+}
+
+function AlliedUnionCard({ ally, canRepair }: { ally: Union; canRepair: boolean }) {
+    const [repairing, setRepairing] = useState(false);
+    const [repaired, setRepaired] = useState(false);
+
+    const handleRepair = async () => {
+        if (!ally.allianceId) return;
+        setRepairing(true);
+        try {
+            const { distributeAllianceKeys } = await import("@/lib/client-actions/alliances");
+            await distributeAllianceKeys(ally.allianceId);
+            setRepaired(true);
+            toast.success("Encrypted channel repaired.");
+        } catch (e) {
+            const reason = e instanceof Error ? e.message : "unknown error";
+            toast.error(`Repair failed: ${reason}`);
+        } finally {
+            setRepairing(false);
+        }
+    };
+
+    return (
+        <div className="p-4 border rounded-lg bg-card space-y-3">
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-10 w-10 shrink-0 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold">
+                        {ally.name.substring(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                        <div className="font-medium truncate">{ally.name}</div>
+                        <div className="text-xs text-muted-foreground">Alliance Active</div>
+                    </div>
+                </div>
+                <div className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded-full font-medium shrink-0">
+                    Partners
+                </div>
+            </div>
+            {canRepair && ally.allianceId && (
+                <div className="border-t pt-3">
+                    <button
+                        onClick={handleRepair}
+                        disabled={repairing || repaired}
+                        className="w-full text-xs text-muted-foreground hover:text-foreground py-1.5 rounded border border-dashed hover:border-solid transition-all flex items-center justify-center gap-1 disabled:opacity-50"
+                    >
+                        {repairing && <Loader2 className="h-3 w-3 animate-spin" />}
+                        {repaired
+                            ? "Encrypted channel up to date"
+                            : repairing
+                                ? "Repairing…"
+                                : "Repair encrypted channel"}
+                    </button>
+                    <p className="text-[10px] text-muted-foreground mt-1 px-1">
+                        Re-distributes the alliance encryption key to every member of both unions.
+                        Use if alliance messaging stopped working after a member was added or removed.
+                    </p>
+                </div>
+            )}
+        </div>
     );
 }
 

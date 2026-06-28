@@ -11,6 +11,9 @@ export interface Union {
     description?: string;
     isPublic?: boolean;
     memberCount: number;
+    // Populated only when this Union is returned as part of an alliance lookup
+    // — carries the UnionAlliances row id so the UI can act on the link.
+    allianceId?: string;
 }
 
 export interface MessageData {

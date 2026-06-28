@@ -205,8 +205,14 @@ export default function VotesPage() {
                 )}
 
                 {!loading && votes.length === 0 && (
-                    <div className="text-center p-12 border border-dashed rounded-lg text-muted-foreground">
-                        No active votes. Create one to get started.
+                    <div className="text-center p-12 border border-dashed rounded-lg space-y-3">
+                        <p className="text-muted-foreground">
+                            No votes yet. Any member of <strong>{activeUnion?.name}</strong> can open a yes/no/abstain vote.
+                            Choices are encrypted in your browser — the server never sees how anyone voted.
+                        </p>
+                        <Button size="sm" onClick={() => setIsCreating(true)}>
+                            <Plus className="mr-2 h-4 w-4" /> Create the first vote
+                        </Button>
                     </div>
                 )}
 

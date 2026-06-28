@@ -857,6 +857,7 @@ export async function getAlliedUnionsAction(unionId: string) {
     const { data, error } = await supabaseAdmin
         .from('UnionAlliances')
         .select(`
+            id,
             union_a:Unions!union_a_id(id, name),
             union_b:Unions!union_b_id(id, name)
         `)
@@ -865,8 +866,12 @@ export async function getAlliedUnionsAction(unionId: string) {
 
     if (error) return { error: "Failed" };
 
+    // Attach the alliance row id to each ally so the UI can act on the
+    // relationship (e.g. repair the encrypted channel) without having to
+    // join Unions↔Alliances client-side.
     const allies = data?.map((r: any) => {
-        return r.union_a.id === unionId ? r.union_b : r.union_a;
+        const ally = r.union_a.id === unionId ? r.union_b : r.union_a;
+        return { ...ally, allianceId: r.id };
     }) || [];
 
     return { allies };
