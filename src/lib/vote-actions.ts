@@ -5,6 +5,7 @@ import { auth } from '@/auth';
 import { validate, createVoteInput, uuid, encryptedPayload, iv as ivSchema } from '@/lib/validation';
 import { verifyMembership } from '@/lib/auth-helpers';
 import { rateLimit } from '@/lib/rate-limit';
+import { recordActivity } from '@/lib/activity';
 import type { VoteRawData, VoteResponseRaw } from '@/lib/types';
 import { logError } from '@/lib/log';
 
@@ -96,6 +97,16 @@ export async function createVoteAction(
             // Non-fatal, return success with warning? Or just log.
         }
     }
+
+    // Activity log: the title is encrypted, so we deliberately don't snapshot
+    // it here. Members can click through to see the (decrypted) title.
+    await recordActivity({
+        unionId,
+        actorId: session.user.id,
+        kind: 'vote_opened',
+        targetId: vote.id,
+        targetLabel: null,
+    });
 
     return { success: true, vote };
 }
@@ -277,5 +288,12 @@ export async function closeVoteAction(voteId: string) {
         logError('closeVote failed', error);
         return { error: "Failed to close vote" };
     }
+    await recordActivity({
+        unionId: vote.union_id,
+        actorId: session.user.id,
+        kind: 'vote_closed',
+        targetId: voteId,
+        targetLabel: null,
+    });
     return { success: true };
 }

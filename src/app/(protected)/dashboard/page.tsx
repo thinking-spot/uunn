@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUnion } from "@/context/UnionContext";
 import { useAuth } from "@/context/AuthContext";
-import { getDashboardStatsAction, getAdminPendingItemsAction } from "@/lib/union-actions";
+import { getDashboardStatsAction, getAdminPendingItemsAction, getUnionActivityAction, type ActivityItem } from "@/lib/union-actions";
+import { formatDistanceToNow } from "date-fns";
 import { decryptContent } from "@/lib/crypto";
 import { aadFor } from "@/lib/aad";
 import { getUnionKey } from "@/lib/client-crypto";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Vote, FileText, Users, MessageSquare, ArrowRight, Loader2, Plus, Compass, KeyRound, BookOpen, Inbox, UserPlus, ShieldCheck } from "lucide-react";
+import { Vote, FileText, Users, MessageSquare, ArrowRight, Loader2, Plus, Compass, KeyRound, BookOpen, Inbox, UserPlus, ShieldCheck, History } from "lucide-react";
 import Link from "next/link";
 
 type DashboardStats = {
@@ -160,8 +161,8 @@ export default function DashboardPage() {
       </div>
 
 
-      {/* Recent Documents List */}
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Recent Documents + Activity + Quick Actions */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Recent Documents</CardTitle>
@@ -200,6 +201,8 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
+        <ActivityCard unionId={activeUnion.id} />
+
         <Card>
           <CardHeader>
             <CardTitle>Quick Actions</CardTitle>
@@ -225,6 +228,79 @@ export default function DashboardPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function describeActivity(item: ActivityItem): string {
+  const actor = item.actorUsername || 'Someone';
+  const target = item.targetLabel || '';
+  switch (item.kind) {
+    case 'member_joined':
+      // For self-joins (target == actor), don't double-name.
+      return target && target !== actor
+        ? `${actor} added ${target} to the union`
+        : `${actor} joined the union`;
+    case 'member_removed':
+      return `${actor} removed ${target || 'a member'}`;
+    case 'member_promoted':
+      return `${actor} promoted ${target || 'a member'} to admin`;
+    case 'vote_opened':
+      return `${actor} opened a vote`;
+    case 'vote_closed':
+      return `${actor} closed a vote`;
+    case 'document_created':
+      return `${actor} created a document`;
+    case 'alliance_accepted':
+      return target
+        ? `Alliance established with ${target}`
+        : `Alliance established`;
+    default:
+      return `${actor} did ${item.kind}`;
+  }
+}
+
+function ActivityCard({ unionId }: { unionId: string }) {
+  const [items, setItems] = useState<ActivityItem[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getUnionActivityAction(unionId, 8).then((res) => {
+      if (cancelled) return;
+      setItems(res.items ?? []);
+    }).catch(() => { /* silent */ });
+    return () => { cancelled = true; };
+  }, [unionId]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <History className="h-4 w-4 text-muted-foreground" />
+          Recent Activity
+        </CardTitle>
+        <CardDescription>Who did what, lately.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {items === null ? (
+          <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div>
+        ) : items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No activity yet. Joins, promotions, votes, and document creations will show up here.
+          </p>
+        ) : (
+          <ul className="space-y-3 text-sm">
+            {items.map((it) => (
+              <li key={it.id} className="flex items-start justify-between gap-3 border-b last:border-0 pb-2 last:pb-0">
+                <span className="text-foreground">{describeActivity(it)}</span>
+                <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                  {formatDistanceToNow(new Date(it.createdAt), { addSuffix: true })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

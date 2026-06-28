@@ -8,6 +8,7 @@ import { verifyMembership, verifyAdmin } from '@/lib/auth-helpers';
 import { RATE_LIMITS } from '@/lib/constants';
 import { logError } from '@/lib/log';
 import { getClientIp } from '@/lib/request-meta';
+import { recordActivity } from '@/lib/activity';
 
 export async function createUnionAction(
     name: string,
@@ -209,6 +210,14 @@ export async function joinUnionAction(inviteCode: string, encrypted_shared_key?:
         return { error: "Failed to join union" };
     }
 
+    await recordActivity({
+        unionId,
+        actorId: session.user.id,
+        kind: 'member_joined',
+        targetId: session.user.id,
+        targetLabel: session.user.name ?? null,
+    });
+
     return { unionId };
 }
 
@@ -356,6 +365,13 @@ export async function joinViaSecureInviteAction(inviteId: string, encryptedShare
         logError('joinViaSecureInvite insert failed', error);
         return { error: "Failed to join union" };
     }
+    await recordActivity({
+        unionId,
+        actorId: session.user.id,
+        kind: 'member_joined',
+        targetId: session.user.id,
+        targetLabel: session.user.name ?? null,
+    });
     return { unionId };
 }
 
@@ -527,6 +543,19 @@ export async function respondToJoinRequestAction(requestId: string, accept: bool
     if (joinError) return { error: "Failed to add member" };
 
     await supabaseAdmin.from('UnionJoinRequests').update({ status: 'accepted' }).eq('id', requestId);
+
+    const { data: joinedUser } = await supabaseAdmin
+        .from('Users')
+        .select('username')
+        .eq('id', req.user_id)
+        .single();
+    await recordActivity({
+        unionId: req.union_id,
+        actorId: session.user.id,
+        kind: 'member_joined',
+        targetId: req.user_id,
+        targetLabel: joinedUser?.username ?? null,
+    });
     return { success: true };
 }
 
@@ -664,6 +693,12 @@ export async function deleteMemberAction(unionId: string, memberId: string) {
         return { error: "Cannot remove yourself" };
     }
 
+    const { data: removed } = await supabaseAdmin
+        .from('Users')
+        .select('username')
+        .eq('id', memberId)
+        .single();
+
     const { error } = await supabaseAdmin
         .from('Memberships')
         .delete()
@@ -671,6 +706,14 @@ export async function deleteMemberAction(unionId: string, memberId: string) {
         .eq('user_id', memberId);
 
     if (error) return { error: "Failed to remove member" };
+
+    await recordActivity({
+        unionId,
+        actorId: session.user.id,
+        kind: 'member_removed',
+        targetId: memberId,
+        targetLabel: removed?.username ?? null,
+    });
     return { success: true };
 }
 
@@ -689,6 +732,19 @@ export async function promoteMemberAction(unionId: string, memberId: string) {
         .eq('user_id', memberId);
 
     if (error) return { error: "Failed to promote member" };
+
+    const { data: promoted } = await supabaseAdmin
+        .from('Users')
+        .select('username')
+        .eq('id', memberId)
+        .single();
+    await recordActivity({
+        unionId,
+        actorId: session.user.id,
+        kind: 'member_promoted',
+        targetId: memberId,
+        targetLabel: promoted?.username ?? null,
+    });
     return { success: true };
 }
 
@@ -840,6 +896,31 @@ export async function respondToAllianceRequestAction(requestId: string, accept: 
         .eq('id', requestId);
 
     if (error) return { error: "Failed" };
+
+    // Record on both sides of the alliance. Each side sees the other's name.
+    const initiatorUnionId = alliance.initiated_by_union_id;
+    const { data: pair } = await supabaseAdmin
+        .from('Unions')
+        .select('id, name')
+        .in('id', [responderUnionId, initiatorUnionId]);
+    const byId = new Map((pair || []).map((u: any) => [u.id, u.name]));
+    await Promise.all([
+        recordActivity({
+            unionId: responderUnionId,
+            actorId: session.user.id,
+            kind: 'alliance_accepted',
+            targetId: initiatorUnionId,
+            targetLabel: byId.get(initiatorUnionId) ?? null,
+        }),
+        recordActivity({
+            unionId: initiatorUnionId,
+            actorId: null,
+            kind: 'alliance_accepted',
+            targetId: responderUnionId,
+            targetLabel: byId.get(responderUnionId) ?? null,
+        }),
+    ]);
+
     return { success: true };
 }
 
@@ -875,6 +956,55 @@ export async function getAlliedUnionsAction(unionId: string) {
     }) || [];
 
     return { allies };
+}
+
+// --- Activity Log ---
+
+export type ActivityItem = {
+    id: string;
+    kind: string;
+    actorUsername: string | null;
+    targetLabel: string | null;
+    createdAt: string;
+};
+
+/**
+ * Return recent activity entries for a union. Members-only — RLS on
+ * UnionActivity enforces this via auth.uid(), and we additionally
+ * verifyMembership for clarity on the server side.
+ */
+export async function getUnionActivityAction(
+    unionId: string,
+    limit = 25,
+): Promise<{ items?: ActivityItem[]; error?: string }> {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not authenticated" };
+
+    const uv = validate(uuid, unionId);
+    if ('error' in uv) return { error: uv.error };
+
+    if (!await verifyMembership(unionId, session.user.id)) {
+        return { error: "Not authorized — members only" };
+    }
+
+    const { data, error } = await supabaseAdmin
+        .from('UnionActivity')
+        .select('id, kind, target_label, created_at, actor:Users!actor_id(username)')
+        .eq('union_id', unionId)
+        .order('created_at', { ascending: false })
+        .limit(Math.min(limit, 100));
+
+    if (error) return { error: "Failed to load activity" };
+
+    const items: ActivityItem[] = (data || []).map((row: any) => ({
+        id: row.id,
+        kind: row.kind,
+        actorUsername: row.actor?.username ?? null,
+        targetLabel: row.target_label ?? null,
+        createdAt: row.created_at,
+    }));
+
+    return { items };
 }
 
 // --- Dashboard ---

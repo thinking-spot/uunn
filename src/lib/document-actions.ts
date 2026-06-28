@@ -6,6 +6,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { validate, updateDocumentInput, uuid, encryptedPayload, iv as ivSchema } from '@/lib/validation';
 import { verifyMembership } from '@/lib/auth-helpers';
 import { rateLimit } from '@/lib/rate-limit';
+import { recordActivity } from '@/lib/activity';
 import type { Document } from '@/lib/types';
 import { logError } from '@/lib/log';
 
@@ -68,6 +69,13 @@ export async function createDocumentAction(
         logError('createDocument failed', error);
         return { error: "Failed to create document" };
     }
+    await recordActivity({
+        unionId,
+        actorId: session.user.id,
+        kind: 'document_created',
+        targetId: data.id,
+        targetLabel: null, // title is encrypted; members decrypt on click-through
+    });
     return { success: true, document: data };
 }
 
