@@ -3,11 +3,12 @@
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Users, UserPlus, Copy, ShieldCheck } from "lucide-react";
+import { Users, UserPlus, Copy, ShieldCheck, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react";
 
 import { useState, useEffect } from "react";
 import { getPendingJoinRequestsAction, respondToJoinRequestAction, getUnionMembersAction, promoteMemberAction } from "@/lib/union-actions";
-import { removeMemberAndRotateKey, createSecureInvite, refreshInviteKey } from "@/lib/client-actions/unions";
+import { removeMemberAndRotateKey, createBulkSecureInvites, refreshInviteKey } from "@/lib/client-actions/unions";
+import { getUnionInvitesAction, type IssuedInvite } from "@/lib/union-actions";
 import { fingerprintFromJson } from "@/lib/key-fingerprint";
 import { useUnion } from "@/context/UnionContext";
 import { useAuth } from "@/context/AuthContext";
@@ -24,12 +25,49 @@ export default function MembersPage() {
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [respondingTo, setRespondingTo] = useState<string | null>(null);
     const [memberQuery, setMemberQuery] = useState("");
+    type SortKey = 'username' | 'role' | 'joinedAt';
+    type SortDir = 'asc' | 'desc';
+    const [sortKey, setSortKey] = useState<SortKey>('joinedAt');
+    const [sortDir, setSortDir] = useState<SortDir>('desc');
+    const PAGE_SIZE = 25;
+    const [page, setPage] = useState(0);
 
     const isAdmin = activeUnion?.role === 'admin';
 
     const filteredMembers = memberQuery.trim()
         ? members.filter(m => m.username?.toLowerCase().includes(memberQuery.trim().toLowerCase()))
         : members;
+
+    const sortedMembers = [...filteredMembers].sort((a, b) => {
+        const dir = sortDir === 'asc' ? 1 : -1;
+        if (sortKey === 'username') return (a.username || '').localeCompare(b.username || '') * dir;
+        if (sortKey === 'role') return (a.role || '').localeCompare(b.role || '') * dir;
+        // joinedAt
+        const at = new Date(a.joinedAt || 0).getTime();
+        const bt = new Date(b.joinedAt || 0).getTime();
+        return (at - bt) * dir;
+    });
+
+    const pageCount = Math.max(1, Math.ceil(sortedMembers.length / PAGE_SIZE));
+    // Clamp the page in case filter/sort changes shrink the list.
+    const safePage = Math.min(page, pageCount - 1);
+    const pagedMembers = sortedMembers.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+
+    // Reset to page 0 when the filter or sort changes — the user is asking
+    // for a new view of the data, current page index is no longer meaningful.
+    useEffect(() => { setPage(0); }, [memberQuery, sortKey, sortDir]);
+
+    const toggleSort = (key: SortKey) => {
+        if (sortKey === key) {
+            setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortKey(key);
+            // Sensible defaults per column: newest joins first, A→Z for names.
+            setSortDir(key === 'joinedAt' ? 'desc' : 'asc');
+        }
+    };
+    const ariaSortFor = (key: SortKey): 'ascending' | 'descending' | 'none' =>
+        sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none';
 
     useEffect(() => {
         if (activeUnion) {
@@ -147,7 +185,7 @@ export default function MembersPage() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <SecureInviteGenerator unionId={activeUnion.id} />
+                        <InvitationsPanel unionId={activeUnion.id} />
                         <div>
                             <label className="block text-xs text-muted-foreground mb-1">
                                 Invite code (advanced)
@@ -206,7 +244,7 @@ export default function MembersPage() {
                                 <div className="flex items-center justify-center p-12">
                                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                                 </div>
-                            ) : filteredMembers.length === 0 ? (
+                            ) : sortedMembers.length === 0 ? (
                                 <div className="p-8 text-center text-muted-foreground">
                                     {memberQuery.trim() ? `No members match "${memberQuery}".` : 'No members found.'}
                                 </div>
@@ -214,14 +252,20 @@ export default function MembersPage() {
                                 <table className="w-full">
                                     <thead>
                                         <tr className="border-b text-left text-sm text-muted-foreground">
-                                            <th scope="col" className="p-4 font-medium">Username</th>
-                                            <th scope="col" className="p-4 font-medium">Role</th>
-                                            <th scope="col" className="p-4 font-medium hidden md:table-cell">Joined</th>
+                                            <th scope="col" aria-sort={ariaSortFor('username')} className="p-4 font-medium">
+                                                <SortHeader label="Username" active={sortKey === 'username'} dir={sortDir} onClick={() => toggleSort('username')} />
+                                            </th>
+                                            <th scope="col" aria-sort={ariaSortFor('role')} className="p-4 font-medium">
+                                                <SortHeader label="Role" active={sortKey === 'role'} dir={sortDir} onClick={() => toggleSort('role')} />
+                                            </th>
+                                            <th scope="col" aria-sort={ariaSortFor('joinedAt')} className="p-4 font-medium hidden md:table-cell">
+                                                <SortHeader label="Joined" active={sortKey === 'joinedAt'} dir={sortDir} onClick={() => toggleSort('joinedAt')} />
+                                            </th>
                                             {isAdmin && <th scope="col" className="p-4 font-medium text-right">Actions</th>}
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {filteredMembers.map((member: any) => {
+                                        {pagedMembers.map((member: any) => {
                                             const isPromoting = actionLoading === member.id + '-promote';
                                             const isRemoving = actionLoading === member.id + '-remove';
                                             const isSelf = member.id === user?.uid;
@@ -296,6 +340,36 @@ export default function MembersPage() {
                                     </tbody>
                                 </table>
                             )}
+                            {!membersLoading && sortedMembers.length > PAGE_SIZE && (
+                                <div className="flex items-center justify-between gap-3 p-4 border-t text-sm">
+                                    <span className="text-muted-foreground">
+                                        Showing {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, sortedMembers.length)} of {sortedMembers.length}
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={safePage === 0}
+                                            onClick={() => setPage(p => Math.max(0, p - 1))}
+                                            aria-label="Previous page"
+                                        >
+                                            Previous
+                                        </Button>
+                                        <span className="text-muted-foreground tabular-nums">
+                                            Page {safePage + 1} of {pageCount}
+                                        </span>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={safePage >= pageCount - 1}
+                                            onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))}
+                                            aria-label="Next page"
+                                        >
+                                            Next
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </TabsContent>
 
@@ -355,55 +429,189 @@ export default function MembersPage() {
     );
 }
 
-function SecureInviteGenerator({ unionId }: { unionId: string }) {
-    const [link, setLink] = useState("");
-    const [loading, setLoading] = useState(false);
+function SortHeader({
+    label, active, dir, onClick,
+}: {
+    label: string;
+    active: boolean;
+    dir: 'asc' | 'desc';
+    onClick: () => void;
+}) {
+    const Icon = !active ? ChevronsUpDown : dir === 'asc' ? ArrowUp : ArrowDown;
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="inline-flex items-center gap-1 -ml-1 px-1 py-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+        >
+            {label}
+            <Icon className="h-3 w-3" aria-hidden="true" />
+        </button>
+    );
+}
 
-    const generate = async () => {
-        setLoading(true);
+function InvitationsPanel({ unionId }: { unionId: string }) {
+    // Labels textarea: one recipient per line. Single-recipient flow is just
+    // "one line in the box" — no separate UI for it.
+    const [labelsInput, setLabelsInput] = useState("");
+    const [creating, setCreating] = useState(false);
+    // Links freshly minted this session, kept in memory because the
+    // private key fragment is only embedded in the URL we hand back and is
+    // never returned by getUnionInvitesAction (it's not on the server).
+    const [freshlyMinted, setFreshlyMinted] = useState<{ label: string; url: string }[]>([]);
+    const [invites, setInvites] = useState<IssuedInvite[] | null>(null);
+
+    const loadInvites = async () => {
+        const res = await getUnionInvitesAction(unionId);
+        setInvites(res.invites ?? []);
+    };
+
+    useEffect(() => {
+        loadInvites();
+        // Quick poll while the panel is open so an admin who's actively
+        // sending invites sees the ledger flip to "joined" without manual
+        // refresh. Cheap — admin-only screen, small queries.
+        const t = setInterval(loadInvites, 20_000);
+        return () => clearInterval(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [unionId]);
+
+    const handleGenerate = async () => {
+        const labels = labelsInput
+            .split(/\r?\n/)
+            .map(l => l.trim())
+            .filter(Boolean);
+        if (labels.length === 0) {
+            toast.error("Add at least one recipient label (one per line).");
+            return;
+        }
+        if (labels.length > 50) {
+            toast.error("Generate at most 50 invites at a time.");
+            return;
+        }
+        setCreating(true);
         try {
-            const url = await createSecureInvite(unionId);
-            setLink(url);
+            const issued = await createBulkSecureInvites(unionId, labels);
+            setFreshlyMinted(prev => [...issued, ...prev]);
+            setLabelsInput("");
+            toast.success(`${issued.length} invite${issued.length === 1 ? '' : 's'} generated.`);
+            loadInvites();
         } catch (e) {
-            toast.error("Failed to create link: " + e);
+            toast.error(`Failed: ${e instanceof Error ? e.message : 'unknown error'}`);
         } finally {
-            setLoading(false);
+            setCreating(false);
         }
     };
 
-    if (link) {
-        return (
-            <div>
-                <label className="block text-xs text-muted-foreground mb-1">
-                    Secure Invite Link (includes keys)
-                </label>
-                <div className="flex gap-2">
-                    <input
-                        readOnly
-                        value={link}
-                        onFocus={(e) => e.currentTarget.select()}
-                        className="flex-1 bg-background border rounded px-2 py-1.5 text-xs truncate font-mono"
-                    />
-                    <Button
-                        size="sm"
-                        onClick={() => {
-                            navigator.clipboard.writeText(link)
-                                .then(() => toast.success("Link copied!"))
-                                .catch(() => toast.error("Failed to copy — try selecting and copying manually"));
-                        }}
-                    >
-                        <Copy className="h-4 w-4 mr-1" /> Copy
-                    </Button>
-                </div>
-            </div>
-        );
-    }
+    const copy = (text: string) => {
+        navigator.clipboard.writeText(text)
+            .then(() => toast.success("Link copied"))
+            .catch(() => toast.error("Could not copy — select and copy manually"));
+    };
 
     return (
-        <Button onClick={generate} disabled={loading} className="w-full">
-            {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
-            Generate Secure Invite Link
-        </Button>
+        <div className="space-y-4">
+            <div>
+                <label htmlFor="invite-labels" className="block text-sm font-medium mb-1">
+                    Generate invite links
+                </label>
+                <textarea
+                    id="invite-labels"
+                    rows={3}
+                    placeholder={"One recipient label per line\ne.g.\nMaria (accounting)\nDay-shift crew"}
+                    className="w-full p-2 border rounded text-sm font-mono"
+                    value={labelsInput}
+                    onChange={e => setLabelsInput(e.target.value)}
+                    aria-describedby="invite-labels-help"
+                />
+                <p id="invite-labels-help" className="text-xs text-muted-foreground mt-1">
+                    Labels are visible only to admins of this union. Each label produces one Secure Invite Link with the union&apos;s encryption key bundled in.
+                </p>
+                <Button onClick={handleGenerate} disabled={creating} className="mt-2">
+                    {creating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
+                    Generate
+                </Button>
+            </div>
+
+            {freshlyMinted.length > 0 && (
+                <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-medium">
+                            Copy these links and send them now — the private key in each URL is not stored on the server and can&apos;t be recovered if you lose it.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => setFreshlyMinted([])}
+                            className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                    <div className="space-y-1.5">
+                        {freshlyMinted.map((item, i) => (
+                            <div key={`${item.url}-${i}`} className="flex gap-2 items-center">
+                                <span className="text-xs font-medium w-32 truncate shrink-0" title={item.label}>{item.label}</span>
+                                <input
+                                    readOnly
+                                    value={item.url}
+                                    onFocus={(e) => e.currentTarget.select()}
+                                    className="flex-1 min-w-0 bg-background border rounded px-2 py-1 text-[11px] truncate font-mono"
+                                    aria-label={`Invite link for ${item.label}`}
+                                />
+                                <Button size="sm" variant="outline" onClick={() => copy(item.url)}>
+                                    <Copy className="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-medium">Issued invites</h4>
+                    <button
+                        type="button"
+                        onClick={loadInvites}
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                        Refresh
+                    </button>
+                </div>
+                {invites === null ? (
+                    <div className="flex justify-center p-4"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+                ) : invites.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No invites yet. Generate one above.</p>
+                ) : (
+                    <ul className="divide-y rounded-md border">
+                        {invites.map((inv) => (
+                            <li key={inv.id} className="px-3 py-2 flex items-center justify-between gap-3 text-sm">
+                                <div className="min-w-0">
+                                    <div className="truncate">
+                                        {inv.label || <span className="text-muted-foreground italic">(no label)</span>}
+                                    </div>
+                                    <div className="text-[11px] text-muted-foreground">
+                                        Sent {new Date(inv.createdAt).toLocaleString()}
+                                        {inv.status === 'joined' && inv.consumedAt && (
+                                            <> · Joined {inv.consumedByUsername ? `as ${inv.consumedByUsername} ` : ''}{new Date(inv.consumedAt).toLocaleString()}</>
+                                        )}
+                                    </div>
+                                </div>
+                                <span className={
+                                    inv.status === 'joined'
+                                        ? 'text-[10px] uppercase font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full shrink-0'
+                                        : inv.status === 'expired'
+                                            ? 'text-[10px] uppercase font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0'
+                                            : 'text-[10px] uppercase font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full shrink-0'
+                                }>
+                                    {inv.status}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
+        </div>
     );
 }
 
