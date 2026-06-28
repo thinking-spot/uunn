@@ -427,6 +427,7 @@ export default function UnionsPage() {
                                             key={ally.id}
                                             ally={ally}
                                             canRepair={activeUnion?.role === 'admin'}
+                                            onDissolved={() => activeUnion && loadAllies(activeUnion.id)}
                                         />
                                     ))}
                                 </div>
@@ -439,9 +440,10 @@ export default function UnionsPage() {
     );
 }
 
-function AlliedUnionCard({ ally, canRepair }: { ally: Union; canRepair: boolean }) {
+function AlliedUnionCard({ ally, canRepair, onDissolved }: { ally: Union; canRepair: boolean; onDissolved: () => void }) {
     const [repairing, setRepairing] = useState(false);
     const [repaired, setRepaired] = useState(false);
+    const [dissolving, setDissolving] = useState(false);
 
     const handleRepair = async () => {
         if (!ally.allianceId) return;
@@ -456,6 +458,31 @@ function AlliedUnionCard({ ally, canRepair }: { ally: Union; canRepair: boolean 
             toast.error(`Repair failed: ${reason}`);
         } finally {
             setRepairing(false);
+        }
+    };
+
+    const handleDissolve = async () => {
+        if (!ally.allianceId) return;
+        // Confirm explicitly — this irreversibly deletes the encrypted alliance
+        // channel and all its message history (CASCADE on AllianceMessages).
+        const ok = window.confirm(
+            `End the alliance with ${ally.name}?\n\nThis deletes the shared encrypted channel and all messages in it for both unions. This cannot be undone.`,
+        );
+        if (!ok) return;
+        setDissolving(true);
+        try {
+            const { dissolveAllianceAction } = await import("@/lib/union-actions");
+            const result = await dissolveAllianceAction(ally.allianceId);
+            if ('error' in result && result.error) {
+                toast.error(result.error);
+                setDissolving(false);
+                return;
+            }
+            toast.success(`Alliance with ${ally.name} ended.`);
+            onDissolved();
+        } catch (e) {
+            toast.error(`Failed to dissolve: ${e instanceof Error ? e.message : 'unknown error'}`);
+            setDissolving(false);
         }
     };
 
@@ -476,10 +503,10 @@ function AlliedUnionCard({ ally, canRepair }: { ally: Union; canRepair: boolean 
                 </div>
             </div>
             {canRepair && ally.allianceId && (
-                <div className="border-t pt-3">
+                <div className="border-t pt-3 space-y-2">
                     <button
                         onClick={handleRepair}
-                        disabled={repairing || repaired}
+                        disabled={repairing || repaired || dissolving}
                         className="w-full text-xs text-muted-foreground hover:text-foreground py-1.5 rounded border border-dashed hover:border-solid transition-all flex items-center justify-center gap-1 disabled:opacity-50"
                     >
                         {repairing && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -489,9 +516,20 @@ function AlliedUnionCard({ ally, canRepair }: { ally: Union; canRepair: boolean 
                                 ? "Repairing…"
                                 : "Repair encrypted channel"}
                     </button>
-                    <p className="text-[10px] text-muted-foreground mt-1 px-1">
+                    <p className="text-[10px] text-muted-foreground px-1">
                         Re-distributes the alliance encryption key to every member of both unions.
                         Use if alliance messaging stopped working after a member was added or removed.
+                    </p>
+                    <button
+                        onClick={handleDissolve}
+                        disabled={dissolving || repairing}
+                        className="w-full text-xs text-destructive hover:bg-destructive/5 py-1.5 rounded border border-dashed border-destructive/40 hover:border-destructive transition-all flex items-center justify-center gap-1 disabled:opacity-50"
+                    >
+                        {dissolving && <Loader2 className="h-3 w-3 animate-spin" />}
+                        {dissolving ? "Ending alliance…" : "End alliance"}
+                    </button>
+                    <p className="text-[10px] text-muted-foreground px-1">
+                        Permanently deletes the encrypted channel and all messages in it, on both sides.
                     </p>
                 </div>
             )}

@@ -254,6 +254,10 @@ function describeActivity(item: ActivityItem): string {
       return target
         ? `Alliance established with ${target}`
         : `Alliance established`;
+    case 'alliance_dissolved':
+      return target
+        ? `Alliance with ${target} was ended`
+        : `Alliance was ended`;
     default:
       return `${actor} did ${item.kind}`;
   }

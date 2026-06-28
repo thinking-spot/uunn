@@ -9,7 +9,8 @@ export type ActivityKind =
     | 'vote_opened'
     | 'vote_closed'
     | 'document_created'
-    | 'alliance_accepted';
+    | 'alliance_accepted'
+    | 'alliance_dissolved';
 
 /**
  * Record a non-sensitive event into the per-union activity log.
