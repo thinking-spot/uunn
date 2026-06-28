@@ -256,13 +256,20 @@ export default function MessagesPage() {
                     <div className="flex-1 flex flex-col min-w-0">
                         {/* Header */}
                         <div className="border-b bg-card/50">
-                            <div className="h-16 flex items-center justify-between px-6">
+                            <div className="h-16 flex items-center justify-between px-4 md:px-6 gap-3">
                                 <button
-                                    className="flex items-center gap-3 md:pointer-events-none"
+                                    className={cn(
+                                        "flex items-center gap-3 md:pointer-events-none flex-1 min-w-0 -ml-2 px-2 py-1.5 rounded-lg md:rounded-none",
+                                        // Make it clearly tappable on mobile: visible hover state, larger hit
+                                        "hover:bg-muted md:hover:bg-transparent",
+                                    )}
                                     onClick={() => setMobileChannelOpen(!mobileChannelOpen)}
+                                    aria-expanded={mobileChannelOpen}
+                                    aria-haspopup="listbox"
+                                    aria-label={`Channel: ${activeChannel?.name ?? ''}. Tap to switch.`}
                                 >
                                     <div className={cn(
-                                        "h-10 w-10 rounded-full flex items-center justify-center font-bold",
+                                        "h-10 w-10 rounded-full flex items-center justify-center font-bold shrink-0",
                                         activeChannel?.type === "alliance"
                                             ? "bg-emerald-100 text-emerald-700"
                                             : "bg-primary/10 text-primary"
@@ -272,13 +279,14 @@ export default function MessagesPage() {
                                             : activeChannel?.name.substring(0, 2).toUpperCase()
                                         }
                                     </div>
-                                    <div>
-                                        <div className="font-bold flex items-center gap-1">
-                                            {activeChannel?.name}
-                                            <ChevronDown className={cn("h-4 w-4 md:hidden transition-transform", mobileChannelOpen && "rotate-180")} />
+                                    <div className="min-w-0 text-left">
+                                        <div className="font-bold flex items-center gap-1 truncate">
+                                            <span className="truncate">{activeChannel?.name}</span>
+                                            <ChevronDown className={cn("h-4 w-4 shrink-0 md:hidden text-muted-foreground transition-transform", mobileChannelOpen && "rotate-180")} />
                                         </div>
-                                        <div className="text-xs text-muted-foreground flex items-center gap-1">
-                                            <ShieldCheck className="h-3 w-3 text-emerald-600" />
+                                        <div className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                                            <ShieldCheck className="h-3 w-3 text-emerald-600 shrink-0" />
+                                            <span className="md:hidden">Tap to switch · </span>
                                             End-to-end Encrypted
                                             {activeChannel?.type === "alliance" && (
                                                 <span className="ml-1 text-emerald-600 font-medium">- Alliance</span>
