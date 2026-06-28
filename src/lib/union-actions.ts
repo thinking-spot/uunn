@@ -879,6 +879,80 @@ export async function getAlliedUnionsAction(unionId: string) {
 
 // --- Dashboard ---
 
+/**
+ * Aggregate of pending things that need the current user's admin attention
+ * across every union they admin: join requests waiting for approval, and
+ * inbound alliance requests waiting for a yes/no.
+ *
+ * Single round-trip from the dashboard rather than fanning out one query per
+ * union. Returns empty arrays (not error) when the user admins nothing.
+ */
+export async function getAdminPendingItemsAction() {
+    const session = await auth();
+    if (!session?.user?.id) return { joinRequests: [], allianceRequests: [] };
+
+    // 1. Find all unions the user admins.
+    const { data: adminships } = await supabaseAdmin
+        .from('Memberships')
+        .select('union_id, union:Unions(id, name)')
+        .eq('user_id', session.user.id)
+        .eq('role', 'admin');
+
+    const adminUnionIds = (adminships || []).map((m: any) => m.union_id);
+    if (adminUnionIds.length === 0) {
+        return { joinRequests: [], allianceRequests: [] };
+    }
+    const unionNames = new Map<string, string>(
+        (adminships || []).map((m: any) => [m.union.id, m.union.name])
+    );
+
+    // 2. Pending join requests targeting any of those unions.
+    const { data: joins } = await supabaseAdmin
+        .from('UnionJoinRequests')
+        .select('id, union_id, created_at, user:Users(username)')
+        .in('union_id', adminUnionIds)
+        .eq('status', 'pending');
+
+    const joinRequests = (joins || []).map((r: any) => ({
+        id: r.id,
+        unionId: r.union_id,
+        unionName: unionNames.get(r.union_id) || 'a union',
+        username: r.user?.username || 'someone',
+        createdAt: r.created_at,
+    }));
+
+    // 3. Pending alliance requests where one of our unions is the target.
+    const orClause = adminUnionIds.map(id => `union_a_id.eq.${id},union_b_id.eq.${id}`).join(',');
+    const { data: alliances } = await supabaseAdmin
+        .from('UnionAlliances')
+        .select(`
+            id,
+            initiated_by_union_id,
+            union_a:Unions!union_a_id(id, name),
+            union_b:Unions!union_b_id(id, name)
+        `)
+        .eq('status', 'pending')
+        .or(orClause);
+
+    type AllianceItem = { id: string; ourUnionId: string; ourUnionName: string; otherUnionName: string };
+    const allianceRequests: AllianceItem[] = [];
+    for (const r of (alliances || []) as any[]) {
+        // Which of our admin unions is this addressed to?
+        const ourSide = adminUnionIds.includes(r.union_a.id) ? r.union_a : r.union_b;
+        const otherSide = ourSide.id === r.union_a.id ? r.union_b : r.union_a;
+        // Only show inbound requests (not the ones our side initiated).
+        if (r.initiated_by_union_id === ourSide.id) continue;
+        allianceRequests.push({
+            id: r.id,
+            ourUnionId: ourSide.id,
+            ourUnionName: ourSide.name,
+            otherUnionName: otherSide.name,
+        });
+    }
+
+    return { joinRequests, allianceRequests };
+}
+
 export async function getDashboardStatsAction(unionId: string) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };

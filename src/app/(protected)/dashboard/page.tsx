@@ -4,13 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUnion } from "@/context/UnionContext";
 import { useAuth } from "@/context/AuthContext";
-import { getDashboardStatsAction } from "@/lib/union-actions";
+import { getDashboardStatsAction, getAdminPendingItemsAction } from "@/lib/union-actions";
 import { decryptContent } from "@/lib/crypto";
 import { aadFor } from "@/lib/aad";
 import { getUnionKey } from "@/lib/client-crypto";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Vote, FileText, Users, MessageSquare, ArrowRight, Loader2, Plus, Compass, KeyRound, BookOpen } from "lucide-react";
+import { Vote, FileText, Users, MessageSquare, ArrowRight, Loader2, Plus, Compass, KeyRound, BookOpen, Inbox, UserPlus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 type DashboardStats = {
@@ -72,6 +72,8 @@ export default function DashboardPage() {
         </h1>
         <p className="text-muted-foreground">Overview of your union's activity.</p>
       </header>
+
+      <AdminInbox />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
         {/* Active Votes Card */}
@@ -223,6 +225,73 @@ export default function DashboardPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+type AdminPending = {
+  joinRequests: { id: string; unionId: string; unionName: string; username: string; createdAt: string }[];
+  allianceRequests: { id: string; ourUnionId: string; ourUnionName: string; otherUnionName: string }[];
+};
+
+function AdminInbox() {
+  const [pending, setPending] = useState<AdminPending | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAdminPendingItemsAction().then((res) => {
+      if (cancelled) return;
+      // `getAdminPendingItemsAction` never returns an error in practice, but
+      // be defensive — the action's typed return is the success shape only.
+      setPending({
+        joinRequests: res.joinRequests ?? [],
+        allianceRequests: res.allianceRequests ?? [],
+      });
+    }).catch(() => { /* silent — banner just won't show */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!pending) return null;
+  const total = pending.joinRequests.length + pending.allianceRequests.length;
+  if (total === 0) return null;
+
+  return (
+    <Card className="mb-8 border-primary/30 bg-primary/5">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Inbox className="h-4 w-4 text-primary" />
+          Needs your attention
+          <span className="ml-1 text-xs font-normal text-muted-foreground">({total})</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {pending.joinRequests.map((req) => (
+          <div key={req.id} className="flex items-center justify-between gap-3 rounded-md border bg-card p-3 text-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <UserPlus className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+              <span className="truncate">
+                <strong>{req.username}</strong> wants to join <strong>{req.unionName}</strong>
+              </span>
+            </div>
+            <Link href="/members">
+              <Button variant="outline" size="sm">Review</Button>
+            </Link>
+          </div>
+        ))}
+        {pending.allianceRequests.map((req) => (
+          <div key={req.id} className="flex items-center justify-between gap-3 rounded-md border bg-card p-3 text-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <ShieldCheck className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+              <span className="truncate">
+                <strong>{req.otherUnionName}</strong> proposed an alliance with <strong>{req.ourUnionName}</strong>
+              </span>
+            </div>
+            <Link href="/unions?tab=allied">
+              <Button variant="outline" size="sm">Review</Button>
+            </Link>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
