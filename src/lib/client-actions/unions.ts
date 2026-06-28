@@ -137,14 +137,12 @@ export async function getUserUnions(userId?: string): Promise<Union[]> {
 }
 
 export async function getUnion(unionId: string): Promise<Union | null> {
-    // We don't have a direct getUnion action yet, but we can reuse getUserUnions or add one.
-    // For now, let's filter from getUserUnions (inefficient but works for small scale)
+    // No dedicated server action — filter the caller's full membership list.
+    // Fine at typical org sizes; revisit if any user belongs to >100 unions.
     const unions = await getUserUnionsAction();
     return (unions.find((u: any) => u.id === unionId) as Union) || null;
 }
 
-// Alliance functions - stubbed for now
-// Alliance functions
 export async function requestAlliance(fromUnionId: string, toUnionId: string) {
     const result = await requestAllianceServer(fromUnionId, toUnionId);
     if (result.error) throw new Error(result.error);
@@ -155,42 +153,6 @@ export async function getAlliedUnions(unionId: string): Promise<Union[]> {
     const result = await getAlliedUnionsServer(unionId);
     if (result.error) throw new Error(result.error);
     return result.allies as Union[];
-}
-
-/**
- * Creates a Secure Invite Link that grants access to union history.
- * Encrypts the Union Key with a temporary "Visit Key".
- */
-export async function createSecureInvite(unionId: string, label?: string): Promise<string> {
-    const unions = await getUserUnionsAction();
-    const myMembership = unions.find((u: any) => u.id === unionId);
-    if (!myMembership) throw new Error("You are not a member of this union");
-
-    const myPrivateKey = await getMyPrivateKey();
-    const unionKey = await unwrapKey(myMembership.encryptionKey, myPrivateKey);
-
-    // 2. Generate Ephemeral Key Pair for the Invite
-    const visitKeyPair = await generateUserKeyPair();
-    const visitPublicKeyJwk = await exportKey(visitKeyPair.publicKey);
-    const visitPrivateKeyJwk = await exportKey(visitKeyPair.privateKey);
-
-    // 3. Encrypt Union Key with Visit Public Key
-    const encryptedUnionKey = await wrapKey(unionKey, visitKeyPair.publicKey);
-
-    // 4. Send to Server (Public Key + Encrypted Blob)
-    const result = await createInviteAction(
-        unionId,
-        encryptedUnionKey,
-        JSON.stringify(visitPublicKeyJwk),
-        label ?? "",
-    );
-
-    if (result.error) throw new Error(result.error);
-
-    // 5. Construct URL
-    // Format: https://uunn.io/invite/<inviteId>#<privateKeyBase64>
-    const fragment = window.btoa(JSON.stringify(visitPrivateKeyJwk));
-    return `${window.location.origin}/invite/${result.inviteId}#${fragment}`;
 }
 
 /**

@@ -25,17 +25,13 @@ export default function InviteClient({ inviteId, unionName }: { inviteId: string
                 return;
             }
             try {
-                // Decode base64 just to verify it's valid? No, keep it strings.
-                // Actually the hash is Base64(JSON(JWK)).
-                // We'll pass the raw decoded string to `joinSecureInvite`.
-                // Actually `joinSecureInvite` expects `visitPrivateKeyJwkStr`.
-                // My logic in `createSecureInvite` was `btoa(JSON.stringify(jwk))`.
-                // So here I should `atob(hash)`.
+                // URL fragment is Base64(JSON(JWK)); decode and validate as JSON,
+                // then hand the raw JSON string to joinSecureInvite below.
                 const decoded = atob(hash);
-                JSON.parse(decoded); // Verify JSON
+                JSON.parse(decoded);
                 setPrivateKeyStr(decoded);
                 setStatus('validating');
-            } catch (e) {
+            } catch {
                 setStatus('error');
                 setErrorMsg("Corrupted invite link.");
             }

@@ -37,13 +37,6 @@ export const createVoteInput = z.object({
     documentIds: z.array(uuid).max(20, "Too many attachments").default([]),
 });
 
-export const createDocumentInput = z.object({
-    unionId: uuid,
-    title: title,
-    contentBlob: encryptedPayload.default(''),
-    iv: iv.default(''),
-});
-
 export const updateDocumentInput = z.object({
     docId: uuid,
     contentBlob: encryptedPayload,

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Copy, Plus, Users, ArrowRightLeft, ShieldCheck, Loader2 } from "lucide-react";
+import { Plus, Users, ArrowRightLeft, ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -18,8 +19,6 @@ import {
     requestAlliance,
     getAlliedUnions,
     getUnion,
-    createSecureInvite,
-    refreshInviteKey,
     Union
 } from "@/lib/client-actions/unions";
 import { distributeAllianceKeys } from "@/lib/client-actions/alliances";
@@ -164,11 +163,10 @@ export default function UnionsPage() {
                     </div>
 
                     <TabsContent value="my-unions">
-                        {/* ... existing my-unions content ... */}
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                             {unions.map(union => (
                                 <div key={union.id} className="rounded-xl border bg-card p-6 shadow-sm">
-                                    <div className="flex items-center gap-4 mb-4">
+                                    <div className="flex items-center gap-4 mb-3">
                                         <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
                                             {union.name.substring(0, 2).toUpperCase()}
                                         </div>
@@ -180,30 +178,20 @@ export default function UnionsPage() {
                                             </div>
                                         </div>
                                     </div>
-                                    {union.role === 'admin' && union.inviteCode ? (
-                                    <div className="p-3 bg-muted/50 rounded-lg flex items-center justify-between mb-2">
-                                        <code className="text-sm font-mono">{union.inviteCode}</code>
-                                        <button
-                                            onClick={() => {
-                                                if (!union.inviteCode) return;
-                                                navigator.clipboard.writeText(union.inviteCode)
-                                                    .then(() => toast.success("Invite code copied!"))
-                                                    .catch(() => toast.error("Failed to copy — try selecting and copying manually"));
-                                            }}
-                                            className="text-muted-foreground hover:text-primary"
-                                            title="Copy invite code"
-                                        >
-                                            <Copy className="h-4 w-4" />
-                                        </button>
-                                    </div>
-                                    ) : (
-                                    <div className="p-3 bg-muted/30 rounded-lg text-xs text-muted-foreground mb-2">
-                                        Only admins can view invite codes.
-                                    </div>
+                                    {union.location && (
+                                        <p className="text-xs text-muted-foreground mb-1">📍 {union.location}</p>
                                     )}
-                                    <SecureInviteGenerator unionId={union.id} />
+                                    {union.description && (
+                                        <p className="text-sm text-muted-foreground line-clamp-3 mb-3">{union.description}</p>
+                                    )}
                                     {union.role === 'admin' && (
-                                        <RefreshInviteKeyButton unionId={union.id} />
+                                        <p className="text-xs text-muted-foreground mb-2">
+                                            Invite management lives on the{" "}
+                                            <Link href="/members" className="text-primary hover:underline">
+                                                Members page
+                                            </Link>
+                                            .
+                                        </p>
                                     )}
                                 </div>
                             ))}
@@ -613,90 +601,3 @@ function PendingAllianceRequests({ unionId }: { unionId?: string }) {
     );
 }
 
-function SecureInviteGenerator({ unionId }: { unionId: string }) {
-    const [link, setLink] = useState("");
-    const [loading, setLoading] = useState(false);
-
-    const generate = async () => {
-        setLoading(true);
-        try {
-            const url = await createSecureInvite(unionId);
-            setLink(url);
-        } catch (e) {
-            toast.error("Failed to create link: " + e);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    if (link) {
-        return (
-            <div className="mt-2 text-xs">
-                <label className="block text-muted-foreground mb-1">Secure Link (Includes Keys)</label>
-                <div className="flex gap-2">
-                    <input
-                        readOnly
-                        value={link}
-                        className="flex-1 bg-background border rounded px-2 py-1 text-xs truncate"
-                    />
-                    <button
-                        onClick={() => {
-                            navigator.clipboard.writeText(link)
-                                .then(() => toast.success("Link copied!"))
-                                .catch(() => toast.error("Failed to copy — try selecting and copying manually"));
-                        }}
-                        className="bg-primary text-primary-foreground px-2 py-1 rounded hover:bg-primary/90"
-                    >
-                        Copy
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <button
-            onClick={generate}
-            disabled={loading}
-            className="w-full mt-2 text-xs bg-secondary hover:bg-secondary/80 text-secondary-foreground py-2 rounded flex items-center justify-center gap-2"
-        >
-            {loading ? "Generating..." : <><ShieldCheck className="h-3 w-3" /> Create Secure Invite Link</>}
-        </button>
-    );
-}
-
-function RefreshInviteKeyButton({ unionId }: { unionId: string }) {
-    const [loading, setLoading] = useState(false);
-    const [done, setDone] = useState(false);
-
-    const handleRefresh = async () => {
-        setLoading(true);
-        try {
-            await refreshInviteKey(unionId);
-            toast.success("Invite key updated! New members joining with the invite code will now receive the encryption key.");
-            setDone(true);
-        } catch (e) {
-            toast.error("Failed to refresh invite key: " + e);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    if (done) {
-        return (
-            <div className="mt-2 text-xs text-center text-emerald-600 font-medium py-1">
-                Invite key up to date
-            </div>
-        );
-    }
-
-    return (
-        <button
-            onClick={handleRefresh}
-            disabled={loading}
-            className="w-full mt-2 text-xs text-muted-foreground hover:text-foreground py-1.5 rounded border border-dashed hover:border-solid transition-all flex items-center justify-center gap-1 disabled:opacity-50"
-        >
-            {loading ? "Updating..." : "Refresh Invite Key"}
-        </button>
-    );
-}
