@@ -235,11 +235,21 @@ function describeActivity(item: ActivityItem): string {
   const actor = item.actorUsername || 'Someone';
   const target = item.targetLabel || '';
   switch (item.kind) {
-    case 'member_joined':
-      // For self-joins (target == actor), don't double-name.
-      return target && target !== actor
-        ? `${actor} added ${target} to the union`
-        : `${actor} joined the union`;
+    case 'member_joined': {
+      // joinViaSecureInviteAction composes the targetLabel as
+      // "<joiner> (invited by <inviter>)" — preserve the parenthetical
+      // when actor == joiner (a self-join via secure invite). Plain
+      // self-joins via invite code carry target == actor and render as
+      // "X joined the union". Admin-accepted join requests have a
+      // different actor (the admin) and render as "Admin added X".
+      if (!target) return `${actor} joined the union`;
+      if (target === actor) return `${actor} joined the union`;
+      if (target.startsWith(`${actor} (`)) {
+        const suffix = target.slice(actor.length).trim(); // "(invited by Y)"
+        return `${actor} joined the union ${suffix}`;
+      }
+      return `${actor} added ${target} to the union`;
+    }
     case 'member_removed':
       return `${actor} removed ${target || 'a member'}`;
     case 'member_promoted':

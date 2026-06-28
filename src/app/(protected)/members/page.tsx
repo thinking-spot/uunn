@@ -7,8 +7,7 @@ import { Users, UserPlus, Copy, ShieldCheck, ArrowUp, ArrowDown, ChevronsUpDown 
 
 import { useState, useEffect } from "react";
 import { getPendingJoinRequestsAction, respondToJoinRequestAction, getUnionMembersAction, promoteMemberAction } from "@/lib/union-actions";
-import { removeMemberAndRotateKey, createBulkSecureInvites, refreshInviteKey } from "@/lib/client-actions/unions";
-import { getUnionInvitesAction, type IssuedInvite } from "@/lib/union-actions";
+import { removeMemberAndRotateKey, createSecureInvite, refreshInviteKey } from "@/lib/client-actions/unions";
 import { fingerprintFromJson } from "@/lib/key-fingerprint";
 import { useUnion } from "@/context/UnionContext";
 import { useAuth } from "@/context/AuthContext";
@@ -451,167 +450,67 @@ function SortHeader({
 }
 
 function InvitationsPanel({ unionId }: { unionId: string }) {
-    // Labels textarea: one recipient per line. Single-recipient flow is just
-    // "one line in the box" — no separate UI for it.
-    const [labelsInput, setLabelsInput] = useState("");
-    const [creating, setCreating] = useState(false);
-    // Links freshly minted this session, kept in memory because the
-    // private key fragment is only embedded in the URL we hand back and is
-    // never returned by getUnionInvitesAction (it's not on the server).
-    const [freshlyMinted, setFreshlyMinted] = useState<{ label: string; url: string }[]>([]);
-    const [invites, setInvites] = useState<IssuedInvite[] | null>(null);
-
-    const loadInvites = async () => {
-        const res = await getUnionInvitesAction(unionId);
-        setInvites(res.invites ?? []);
-    };
-
-    useEffect(() => {
-        loadInvites();
-        // Quick poll while the panel is open so an admin who's actively
-        // sending invites sees the ledger flip to "joined" without manual
-        // refresh. Cheap — admin-only screen, small queries.
-        const t = setInterval(loadInvites, 20_000);
-        return () => clearInterval(t);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [unionId]);
+    // The URL only exists in this component's memory after generation — the
+    // private key fragment isn't stored server-side and can't be re-derived,
+    // so once the user navigates away the link is gone (single-use anyway).
+    const [link, setLink] = useState<string | null>(null);
+    const [generating, setGenerating] = useState(false);
 
     const handleGenerate = async () => {
-        const labels = labelsInput
-            .split(/\r?\n/)
-            .map(l => l.trim())
-            .filter(Boolean);
-        if (labels.length === 0) {
-            toast.error("Add at least one recipient label (one per line).");
-            return;
-        }
-        if (labels.length > 50) {
-            toast.error("Generate at most 50 invites at a time.");
-            return;
-        }
-        setCreating(true);
+        setGenerating(true);
         try {
-            const issued = await createBulkSecureInvites(unionId, labels);
-            setFreshlyMinted(prev => [...issued, ...prev]);
-            setLabelsInput("");
-            toast.success(`${issued.length} invite${issued.length === 1 ? '' : 's'} generated.`);
-            loadInvites();
+            const url = await createSecureInvite(unionId);
+            setLink(url);
         } catch (e) {
             toast.error(`Failed: ${e instanceof Error ? e.message : 'unknown error'}`);
         } finally {
-            setCreating(false);
+            setGenerating(false);
         }
     };
 
-    const copy = (text: string) => {
-        navigator.clipboard.writeText(text)
+    const copy = () => {
+        if (!link) return;
+        navigator.clipboard.writeText(link)
             .then(() => toast.success("Link copied"))
             .catch(() => toast.error("Could not copy — select and copy manually"));
     };
 
-    return (
-        <div className="space-y-4">
-            <div>
-                <label htmlFor="invite-labels" className="block text-sm font-medium mb-1">
-                    Generate invite links
-                </label>
-                <textarea
-                    id="invite-labels"
-                    rows={3}
-                    placeholder={"One recipient label per line\ne.g.\nMaria (accounting)\nDay-shift crew"}
-                    className="w-full p-2 border rounded text-sm font-mono"
-                    value={labelsInput}
-                    onChange={e => setLabelsInput(e.target.value)}
-                    aria-describedby="invite-labels-help"
-                />
-                <p id="invite-labels-help" className="text-xs text-muted-foreground mt-1">
-                    Labels are visible only to admins of this union. Each label produces one Secure Invite Link with the union&apos;s encryption key bundled in.
+    if (link) {
+        return (
+            <div className="space-y-2">
+                <label className="block text-sm font-medium">Secure Invite Link</label>
+                <div className="flex gap-2">
+                    <input
+                        readOnly
+                        value={link}
+                        onFocus={(e) => e.currentTarget.select()}
+                        className="flex-1 min-w-0 bg-background border rounded px-2 py-1.5 text-xs truncate font-mono"
+                        aria-label="Secure invite link"
+                    />
+                    <Button size="sm" onClick={copy}>
+                        <Copy className="h-3.5 w-3.5 mr-1" /> Copy
+                    </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                    Send this to one person. It works once and bundles the union&apos;s
+                    encryption key — the server can&apos;t recover it if you lose it.
                 </p>
-                <Button onClick={handleGenerate} disabled={creating} className="mt-2">
-                    {creating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
-                    Generate
-                </Button>
+                <button
+                    type="button"
+                    onClick={() => { setLink(null); handleGenerate(); }}
+                    className="text-xs text-primary hover:underline"
+                >
+                    Generate another link
+                </button>
             </div>
+        );
+    }
 
-            {freshlyMinted.length > 0 && (
-                <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-medium">
-                            Copy these links and send them now — the private key in each URL is not stored on the server and can&apos;t be recovered if you lose it.
-                        </p>
-                        <button
-                            type="button"
-                            onClick={() => setFreshlyMinted([])}
-                            className="text-xs text-muted-foreground hover:text-foreground shrink-0"
-                        >
-                            Dismiss
-                        </button>
-                    </div>
-                    <div className="space-y-1.5">
-                        {freshlyMinted.map((item, i) => (
-                            <div key={`${item.url}-${i}`} className="flex gap-2 items-center">
-                                <span className="text-xs font-medium w-32 truncate shrink-0" title={item.label}>{item.label}</span>
-                                <input
-                                    readOnly
-                                    value={item.url}
-                                    onFocus={(e) => e.currentTarget.select()}
-                                    className="flex-1 min-w-0 bg-background border rounded px-2 py-1 text-[11px] truncate font-mono"
-                                    aria-label={`Invite link for ${item.label}`}
-                                />
-                                <Button size="sm" variant="outline" onClick={() => copy(item.url)}>
-                                    <Copy className="h-3.5 w-3.5" />
-                                </Button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            <div>
-                <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-sm font-medium">Issued invites</h4>
-                    <button
-                        type="button"
-                        onClick={loadInvites}
-                        className="text-xs text-muted-foreground hover:text-foreground"
-                    >
-                        Refresh
-                    </button>
-                </div>
-                {invites === null ? (
-                    <div className="flex justify-center p-4"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
-                ) : invites.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No invites yet. Generate one above.</p>
-                ) : (
-                    <ul className="divide-y rounded-md border">
-                        {invites.map((inv) => (
-                            <li key={inv.id} className="px-3 py-2 flex items-center justify-between gap-3 text-sm">
-                                <div className="min-w-0">
-                                    <div className="truncate">
-                                        {inv.label || <span className="text-muted-foreground italic">(no label)</span>}
-                                    </div>
-                                    <div className="text-[11px] text-muted-foreground">
-                                        Sent {new Date(inv.createdAt).toLocaleString()}
-                                        {inv.status === 'joined' && inv.consumedAt && (
-                                            <> · Joined {inv.consumedByUsername ? `as ${inv.consumedByUsername} ` : ''}{new Date(inv.consumedAt).toLocaleString()}</>
-                                        )}
-                                    </div>
-                                </div>
-                                <span className={
-                                    inv.status === 'joined'
-                                        ? 'text-[10px] uppercase font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full shrink-0'
-                                        : inv.status === 'expired'
-                                            ? 'text-[10px] uppercase font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0'
-                                            : 'text-[10px] uppercase font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full shrink-0'
-                                }>
-                                    {inv.status}
-                                </span>
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </div>
-        </div>
+    return (
+        <Button onClick={handleGenerate} disabled={generating} className="w-full">
+            {generating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
+            Generate Secure Invite Link
+        </Button>
     );
 }
 

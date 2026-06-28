@@ -277,13 +277,9 @@ export async function getMyPublicKeyAction() {
 
 // --- Secure Invites ---
 
-export async function createInviteAction(unionId: string, encryptedUnionKey: string, recipientPublicKey: string, recipientLabel: string) {
+export async function createInviteAction(unionId: string, encryptedUnionKey: string, recipientPublicKey: string) {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not authenticated" };
-
-    // Bound the label so it can't be used to smuggle large payloads into the
-    // table. Empty label is fine — it just means the admin didn't tag it.
-    const trimmedLabel = (recipientLabel ?? '').toString().trim().slice(0, 200) || null;
 
     const { data, error } = await supabaseAdmin
         .from('UnionInvites')
@@ -292,7 +288,6 @@ export async function createInviteAction(unionId: string, encryptedUnionKey: str
             created_by: session.user.id,
             encrypted_union_key: encryptedUnionKey,
             invite_public_key: recipientPublicKey,
-            label: trimmedLabel,
         })
         .select()
         .single();
@@ -302,55 +297,6 @@ export async function createInviteAction(unionId: string, encryptedUnionKey: str
         return { error: "Failed" };
     }
     return { inviteId: data.id };
-}
-
-/**
- * Admin-only: list the Secure Invite Links issued for a union, plus their
- * status (pending / joined / expired). Used by the Members → Invite
- * Members card to give admins a running ledger of who they invited and
- * which links have been redeemed.
- */
-export type IssuedInvite = {
-    id: string;
-    label: string | null;
-    createdAt: string;
-    expiresAt: string | null;
-    consumedAt: string | null;
-    consumedByUsername: string | null;
-    status: 'pending' | 'joined' | 'expired';
-};
-
-export async function getUnionInvitesAction(
-    unionId: string,
-): Promise<{ invites?: IssuedInvite[]; error?: string }> {
-    const session = await auth();
-    if (!session?.user?.id) return { error: "Not authenticated" };
-    if (!await verifyAdmin(unionId, session.user.id)) {
-        return { error: "Not authorized — admin only" };
-    }
-
-    const { data, error } = await supabaseAdmin
-        .from('UnionInvites')
-        .select('id, label, created_at, expires_at, consumed_at, consumer:Users!consumed_by(username)')
-        .eq('union_id', unionId)
-        .order('created_at', { ascending: false });
-    if (error) return { error: "Failed to load invites" };
-
-    const now = Date.now();
-    const invites: IssuedInvite[] = (data || []).map((r: any) => {
-        const expired = !!r.expires_at && new Date(r.expires_at).getTime() < now;
-        const consumed = !!r.consumed_at;
-        return {
-            id: r.id,
-            label: r.label ?? null,
-            createdAt: r.created_at,
-            expiresAt: r.expires_at ?? null,
-            consumedAt: r.consumed_at ?? null,
-            consumedByUsername: r.consumer?.username ?? null,
-            status: consumed ? 'joined' : expired ? 'expired' : 'pending',
-        };
-    });
-    return { invites };
 }
 
 /**
@@ -375,7 +321,7 @@ export async function joinViaSecureInviteAction(inviteId: string, encryptedShare
 
     const { data: invite, error: inviteError } = await supabaseAdmin
         .from('UnionInvites')
-        .select('union_id, expires_at, consumed_by, consumed_at')
+        .select('union_id, expires_at, consumed_by, consumed_at, created_by, creator:Users!created_by(username)')
         .eq('id', inviteId)
         .single();
     if (inviteError || !invite) return { error: "Invalid invite" };
@@ -421,12 +367,22 @@ export async function joinViaSecureInviteAction(inviteId: string, encryptedShare
         .eq('id', inviteId)
         .is('consumed_by', null); // Guard against double-consumption races.
 
+    // Compose a richer target label that includes who issued the invite,
+    // so the activity feed reads "X joined the union (invited by Y)"
+    // instead of just "X joined the union". This is the "who created the
+    // particular invite link that was used" tracking — surfaced where
+    // members already look rather than in a separate ledger.
+    const joiner = session.user.name ?? null;
+    const inviter = (invite.creator as any)?.username ?? null;
+    const targetLabel = joiner && inviter && inviter !== joiner
+        ? `${joiner} (invited by ${inviter})`
+        : joiner;
     await recordActivity({
         unionId,
         actorId: session.user.id,
         kind: 'member_joined',
         targetId: session.user.id,
-        targetLabel: session.user.name ?? null,
+        targetLabel,
     });
     return { unionId };
 }
